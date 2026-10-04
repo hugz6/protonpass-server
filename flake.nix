@@ -8,14 +8,17 @@
 
   outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
-      let pkgs = import nixpkgs { inherit system; };
+      let
+        pkgs = import nixpkgs { inherit system; };
+        # vscode-go wants its tools built with the same Go as the toolchain
+        withGo127 = p: p.override { buildGoModule = pkgs.buildGo127Module; };
       in {
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             go_1_27 # toolchain
             gopls   # LSP
             proton-pass-cli # wrapped by the server
-          ];
+          ] ++ map withGo127 (with pkgs; [ delve gotools go-tools gomodifytags impl gotests ]);
         };
       });
 }
