@@ -14,7 +14,10 @@ import (
 )
 
 // DefaultMaxOutput for any pass-cli secret's is 1Mio
-const DefaultMaxOutput int64 = 1 << 20
+const (
+	DefaultMaxOutput int64 = 1 << 20
+	errorMaxOutput   int64 = 512
+)
 
 // errOutputTooLarge is raised when exceeding MaxOutput
 var errOutputTooLarge = errors.New("pass-cli output too large")
@@ -81,6 +84,20 @@ func (buff *stdoutBuffer) Write(p []byte) (n int, err error) {
 	return buff.buf.Write(p)
 }
 
+type stderrBuffer struct {
+	buf      bytes.Buffer
+	exceeded bool
+}
+
+func (buff *stderrBuffer) Write(p []byte) (n int, err error) {
+	if buff.exceeded || int64(buff.buf.Len())+int64(len(p)) > errorMaxOutput {
+		buff.exceeded = true
+		buff.buf.Write(p[:int(errorMaxOutput)-buff.buf.Len()])
+		return len(p), nil
+	}
+	return buff.buf.Write(p)
+}
+
 func (r *Runner) View(ctx context.Context, uri string) (json.RawMessage, error) {
 	// handle maxOutput
 	maxOutput := r.MaxOutput
@@ -105,6 +122,10 @@ func (r *Runner) View(ctx context.Context, uri string) (json.RawMessage, error) 
 	buff := &stdoutBuffer{maxOutput: maxOutput}
 	cmd.Stdout = buff
 
+	// create the stderr buffer
+	buffErr := &stderrBuffer{}
+	cmd.Stderr = buffErr
+
 	// run and check for error
 	err := cmd.Run()
 	// check if output exceeded
@@ -118,6 +139,10 @@ func (r *Runner) View(ctx context.Context, uri string) (json.RawMessage, error) 
 			return nil, fmt.Errorf("error while running pass-cli: %w", ctxErr)
 		}
 		// if it's not a WaitDelay err, just return
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) {
+			return nil, fmt.Errorf("error while running pass-cli: %w: %s", err, buffErr.buf.String())
+		}
 		return nil, fmt.Errorf("error while running pass-cli: %w", err)
 	}
 

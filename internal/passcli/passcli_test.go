@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -265,5 +266,56 @@ func TestViewAtOutputLimit(t *testing.T) {
 	}
 	if string(got) != want {
 		t.Errorf("View = %q, want %q", got, want)
+	}
+}
+
+func TestViewErrorIncludesStderrNotStdout(t *testing.T) {
+	secret := "s3cret-value"
+	r := newRunner(t, `echo 'item not found' >&2; printf '`+secret+`'; exit 1`)
+
+	_, err := r.View(t.Context(), "pass://share/item")
+	if err == nil {
+		t.Fatal("View returned nil error, want error")
+	}
+	if !strings.Contains(err.Error(), "item not found") {
+		t.Errorf("error %q does not include pass-cli stderr", err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Errorf("error %q leaks pass-cli stdout", err)
+	}
+}
+
+func TestViewLongStderrIsTruncated(t *testing.T) {
+	// A single write larger than the limit: the start must be kept, the rest
+	// dropped, and pass-cli must still be allowed to exit on its own.
+	long := "start-of-message " + strings.Repeat("x", 10000)
+	r := newRunner(t, `printf '`+long+`' >&2; exit 1`)
+
+	_, err := r.View(t.Context(), "pass://share/item")
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Fatalf("View error = %v, want exit status 1", err)
+	}
+	if !strings.Contains(err.Error(), "start-of-message") {
+		t.Errorf("error lost the start of stderr: %.80q", err)
+	}
+	if len(err.Error()) > 1024 {
+		t.Errorf("error is %d bytes long, want stderr truncated", len(err.Error()))
+	}
+}
+
+func TestViewStderrSeveralWrites(t *testing.T) {
+	// Many small writes past the limit: no panic, output stays bounded.
+	r := newRunner(t, `i=0; while [ $i -lt 200 ]; do echo "line $i" >&2; i=$((i+1)); done; exit 1`)
+
+	_, err := r.View(t.Context(), "pass://share/item")
+	if err == nil {
+		t.Fatal("View returned nil error, want error")
+	}
+	if !strings.Contains(err.Error(), "line 0") {
+		t.Errorf("error lost the start of stderr: %.80q", err)
+	}
+	if len(err.Error()) > 1024 {
+		t.Errorf("error is %d bytes long, want stderr truncated", len(err.Error()))
 	}
 }
