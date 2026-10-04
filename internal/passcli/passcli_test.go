@@ -1,6 +1,9 @@
 package passcli
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -68,5 +71,74 @@ func TestFakeCLI(t *testing.T) {
 	}
 	if string(out) != "hello\n" {
 		t.Errorf("fakeCLI(%q) = %q, want %q", script, out, "hello\n")
+	}
+}
+
+func TestViewOK(t *testing.T) {
+	jsonRawMsg := []byte(`{"ok":true}`)
+	script := fmt.Sprintf("printf %q", jsonRawMsg)
+	fakePath := fakeCLI(t, script)
+	r := Runner{Bin: fakePath}
+	uri := "pass://a/b"
+	result, err := r.View(t.Context(), uri)
+	if err != nil {
+		t.Fatalf("error while calling View(): %s", err.Error())
+	}
+	if result.String() != string(jsonRawMsg) {
+		t.Fatalf("View(%q) = %q, want %q", uri, result, jsonRawMsg)
+	}
+}
+
+func TestViewPassesExactArgs(t *testing.T) {
+	argsFile := filepath.Join(t.TempDir(), "args")
+	bin := fakeCLI(t, `printf '%s\n' "$@" > '`+argsFile+`'; printf '{}'`)
+	r := Runner{Bin: bin}
+	uri := "pass://share/item/password"
+	_, err := r.View(t.Context(), uri)
+	if err != nil {
+		t.Fatalf("error while calling View(): %s", err.Error())
+	}
+	result, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatalf("couldn't open argsfile: %s", err.Error())
+	}
+	expected := "item\nview\npass://share/item/password\n--output\njson\n"
+	if expected != string(result) {
+		t.Fatalf("argsFile = %q, want %q", result, expected)
+	}
+}
+
+func TestViewRejectsInvalidURIWithoutExec(t *testing.T) {
+	witness := filepath.Join(t.TempDir(), "ran")
+	bin := fakeCLI(t, `: > '`+witness+`'`)
+	r := Runner{Bin: bin}
+	uri := "pass://invalid/uri/bla/bla"
+	_, err := r.View(t.Context(), uri)
+	if err == nil {
+		t.Fatalf("View(%q) dit not throw an error, we expected one", uri)
+	}
+	_, err = os.Stat(witness)
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("View(%q) ran and wrote the witness file, we didn't expect one", uri)
+	}
+}
+
+func TestViewNonZeroExit(t *testing.T) {
+	bin := fakeCLI(t, `exit 1`)
+	r := Runner{Bin: bin}
+	uri := "pass://share/item/password"
+	_, err := r.View(t.Context(), uri)
+	if err == nil {
+		t.Fatalf("View(%q) dit not throw an error, we expected one", uri)
+	}
+}
+
+func TestViewInvalidJson(t *testing.T) {
+	bin := fakeCLI(t, `printf "not json"`)
+	r := Runner{Bin: bin}
+	uri := "pass://share/item/password"
+	_, err := r.View(t.Context(), uri)
+	if err == nil {
+		t.Fatalf("View(%q) dit not throw an error, we expected one", uri)
 	}
 }

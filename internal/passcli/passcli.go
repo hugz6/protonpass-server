@@ -1,7 +1,11 @@
 package passcli
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"os/exec"
 	"regexp"
 	"strings"
 	"unicode"
@@ -9,6 +13,11 @@ import (
 
 // RegExp for SHARE and ITEM
 var idPattern = regexp.MustCompile(`^[A-Za-z0-9_=-]+$`)
+
+// Runner struct
+type Runner struct {
+	Bin string // absolute path to pass-cli
+}
 
 func ValidateURI(uri string) error {
 	// check if prefix is valid
@@ -45,4 +54,24 @@ func ValidateURI(uri string) error {
 	}
 
 	return nil
+}
+
+func (r *Runner) View(ctx context.Context, uri string) (json.RawMessage, error) {
+	// check URI
+	if err := ValidateURI(uri); err != nil {
+		return nil, err
+	}
+
+	// setup pass-cli exec with ctx and shell-less
+	cmd := exec.CommandContext(ctx, r.Bin, "item", "view", uri, "--output", "json")
+	// run and catch errors
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("error while running pass-cli: %w", err)
+	}
+	// check if output is valid json
+	if isValid := json.Valid(out); !isValid {
+		return nil, fmt.Errorf("error while validating pass-cli json output")
+	}
+	return out, nil
 }
