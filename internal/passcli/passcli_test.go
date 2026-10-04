@@ -1,28 +1,48 @@
 package passcli
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
-// Helper that creates a fake cli script with the provided content.
+// fakeCLI writes an executable shell script standing in for pass-cli and
+// returns its path.
 func fakeCLI(t *testing.T, script string) string {
 	t.Helper()
-	tmpDir := t.TempDir()
-	tmpCliFile := filepath.Join(tmpDir, "cli.sh")
-	content := []byte("#!/bin/sh\n" + script)
-	// write file with exec perm
-	err := os.WriteFile(tmpCliFile, content, 0o700)
-	if err != nil {
-		t.Fatalf("couldn't write fake cli file: %s", err.Error())
+	path := filepath.Join(t.TempDir(), "pass-cli")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script), 0o700); err != nil {
+		t.Fatalf("writing fake pass-cli: %v", err)
 	}
+	return path
+}
 
-	return tmpCliFile
+// newRunner returns a Runner on a fake pass-cli running script, with a
+// dedicated HOME and a timeout generous enough for slow CI machines.
+func newRunner(t *testing.T, script string) *Runner {
+	t.Helper()
+	return &Runner{
+		Bin:     fakeCLI(t, script),
+		Home:    t.TempDir(),
+		Timeout: 5 * time.Second,
+	}
+}
+
+// lookPath returns the absolute path of an external command. The runner
+// clears PATH, so fake scripts must call external commands by absolute path.
+func lookPath(t *testing.T, name string) string {
+	t.Helper()
+	path, err := exec.LookPath(name)
+	if err != nil {
+		t.Skipf("%s not found: %v", name, err)
+	}
+	return path
 }
 
 func TestValidateURI(t *testing.T) {
@@ -63,82 +83,140 @@ func TestValidateURI(t *testing.T) {
 }
 
 func TestFakeCLI(t *testing.T) {
-	script := `echo hello`
-	bin := fakeCLI(t, script)
-	out, err := exec.Command(bin).Output()
+	out, err := exec.Command(fakeCLI(t, `echo hello`)).Output()
 	if err != nil {
-		t.Fatalf("error while running fakeCLI: %s", err.Error())
+		t.Fatalf("running fake pass-cli: %v", err)
 	}
 	if string(out) != "hello\n" {
-		t.Errorf("fakeCLI(%q) = %q, want %q", script, out, "hello\n")
+		t.Errorf("output = %q, want %q", out, "hello\n")
 	}
 }
 
 func TestViewOK(t *testing.T) {
-	jsonRawMsg := []byte(`{"ok":true}`)
-	script := fmt.Sprintf("printf %q", jsonRawMsg)
-	fakePath := fakeCLI(t, script)
-	r := Runner{Bin: fakePath}
-	uri := "pass://a/b"
-	result, err := r.View(t.Context(), uri)
+	want := `{"ok":true}`
+	r := newRunner(t, `printf '`+want+`'`)
+
+	got, err := r.View(t.Context(), "pass://share/item")
 	if err != nil {
-		t.Fatalf("error while calling View(): %s", err.Error())
+		t.Fatalf("View: %v", err)
 	}
-	if result.String() != string(jsonRawMsg) {
-		t.Fatalf("View(%q) = %q, want %q", uri, result, jsonRawMsg)
+	if string(got) != want {
+		t.Errorf("View = %q, want %q", got, want)
 	}
 }
 
 func TestViewPassesExactArgs(t *testing.T) {
-	argsFile := filepath.Join(t.TempDir(), "args")
-	bin := fakeCLI(t, `printf '%s\n' "$@" > '`+argsFile+`'; printf '{}'`)
-	r := Runner{Bin: bin}
+	r := newRunner(t, `printf '%s\n' "$@" > "$HOME/args"; printf '{}'`)
 	uri := "pass://share/item/password"
-	_, err := r.View(t.Context(), uri)
-	if err != nil {
-		t.Fatalf("error while calling View(): %s", err.Error())
+
+	if _, err := r.View(t.Context(), uri); err != nil {
+		t.Fatalf("View: %v", err)
 	}
-	result, err := os.ReadFile(argsFile)
+	got, err := os.ReadFile(filepath.Join(r.Home, "args"))
 	if err != nil {
-		t.Fatalf("couldn't open argsfile: %s", err.Error())
+		t.Fatalf("reading recorded args: %v", err)
 	}
-	expected := "item\nview\npass://share/item/password\n--output\njson\n"
-	if expected != string(result) {
-		t.Fatalf("argsFile = %q, want %q", result, expected)
+	want := "item\nview\n" + uri + "\n--output\njson\n"
+	if string(got) != want {
+		t.Errorf("args = %q, want %q", got, want)
 	}
 }
 
 func TestViewRejectsInvalidURIWithoutExec(t *testing.T) {
-	witness := filepath.Join(t.TempDir(), "ran")
-	bin := fakeCLI(t, `: > '`+witness+`'`)
-	r := Runner{Bin: bin}
-	uri := "pass://invalid/uri/bla/bla"
-	_, err := r.View(t.Context(), uri)
-	if err == nil {
-		t.Fatalf("View(%q) dit not throw an error, we expected one", uri)
+	r := newRunner(t, `: > "$HOME/ran"`)
+	uri := "pass://share/item;rm -rf ~"
+
+	if _, err := r.View(t.Context(), uri); err == nil {
+		t.Fatalf("View(%q) returned nil error, want error", uri)
 	}
-	_, err = os.Stat(witness)
-	if !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("View(%q) ran and wrote the witness file, we didn't expect one", uri)
+	if _, err := os.Stat(filepath.Join(r.Home, "ran")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("pass-cli was executed for invalid URI %q", uri)
 	}
 }
 
 func TestViewNonZeroExit(t *testing.T) {
-	bin := fakeCLI(t, `exit 1`)
-	r := Runner{Bin: bin}
-	uri := "pass://share/item/password"
-	_, err := r.View(t.Context(), uri)
-	if err == nil {
-		t.Fatalf("View(%q) dit not throw an error, we expected one", uri)
+	r := newRunner(t, `exit 1`)
+
+	_, err := r.View(t.Context(), "pass://share/item")
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("View error = %v, want an *exec.ExitError", err)
+	}
+	if exitErr.ExitCode() != 1 {
+		t.Errorf("exit code = %d, want 1", exitErr.ExitCode())
 	}
 }
 
-func TestViewInvalidJson(t *testing.T) {
-	bin := fakeCLI(t, `printf "not json"`)
-	r := Runner{Bin: bin}
-	uri := "pass://share/item/password"
-	_, err := r.View(t.Context(), uri)
+func TestViewInvalidJSON(t *testing.T) {
+	r := newRunner(t, `printf 'not json'`)
+
+	_, err := r.View(t.Context(), "pass://share/item")
 	if err == nil {
-		t.Fatalf("View(%q) dit not throw an error, we expected one", uri)
+		t.Fatal("View returned nil error, want error")
+	}
+	// pass-cli itself succeeded: the error must come from JSON validation,
+	// not from the process or the context.
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) || errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("View error = %v, want a JSON validation error", err)
+	}
+}
+
+func TestViewIsolatesEnvironment(t *testing.T) {
+	t.Setenv("PPS_LEAK", "secret-from-parent")
+	r := newRunner(t, `printf '{"leak":"%s","home":"%s"}' "$PPS_LEAK" "$HOME"`)
+
+	out, err := r.View(t.Context(), "pass://share/item")
+	if err != nil {
+		t.Fatalf("View: %v", err)
+	}
+	var got struct{ Leak, Home string }
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("decoding fake pass-cli output: %v", err)
+	}
+	if got.Leak != "" {
+		t.Errorf("parent env leaked into pass-cli: PPS_LEAK=%q", got.Leak)
+	}
+	if got.Home != r.Home {
+		t.Errorf("HOME = %q, want %q", got.Home, r.Home)
+	}
+}
+
+func TestViewTimeout(t *testing.T) {
+	sleep := lookPath(t, "sleep")
+	// The trailing echo keeps sh alive as the parent of sleep, so sleep
+	// inherits stdout and keeps it open after sh is killed.
+	r := newRunner(t, sleep+" 10; echo done")
+	r.Timeout = 200 * time.Millisecond
+
+	start := time.Now()
+	_, err := r.View(t.Context(), "pass://share/item")
+	elapsed := time.Since(start)
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("View error = %v, want context.DeadlineExceeded", err)
+	}
+	if elapsed > 3*time.Second {
+		t.Errorf("View returned after %v, want < 3s", elapsed)
+	}
+}
+
+func TestViewCallerCancel(t *testing.T) {
+	sleep := lookPath(t, "sleep")
+	r := newRunner(t, sleep+" 10; echo done")
+
+	// The caller's context expires before the runner's own timeout.
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := r.View(ctx, "pass://share/item")
+	elapsed := time.Since(start)
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("View error = %v, want context.DeadlineExceeded", err)
+	}
+	if elapsed > 3*time.Second {
+		t.Errorf("View returned after %v, want < 3s", elapsed)
 	}
 }
