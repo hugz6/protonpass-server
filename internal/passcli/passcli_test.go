@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -218,5 +219,51 @@ func TestViewCallerCancel(t *testing.T) {
 	}
 	if elapsed > 3*time.Second {
 		t.Errorf("View returned after %v, want < 3s", elapsed)
+	}
+}
+
+func TestViewOutputLimit(t *testing.T) {
+	head := lookPath(t, "head")
+	r := newRunner(t, head+" -c 2000000 /dev/zero")
+	r.MaxOutput = 1024
+
+	start := time.Now()
+	_, err := r.View(t.Context(), "pass://share/item")
+	elapsed := time.Since(start)
+
+	// Zero bytes are not JSON either: checking err != nil alone would pass
+	// even if the limit were never enforced.
+	if !errors.Is(err, errOutputTooLarge) {
+		t.Errorf("View error = %v, want errOutputTooLarge", err)
+	}
+	// Exceeding the limit must stop pass-cli, not wait for the timeout.
+	if elapsed > time.Second {
+		t.Errorf("View returned after %v, want < 1s", elapsed)
+	}
+}
+
+func TestViewDefaultOutputLimit(t *testing.T) {
+	head := lookPath(t, "head")
+	size := strconv.FormatInt(int64(DefaultMaxOutput)+1, 10)
+	r := newRunner(t, head+" -c "+size+" /dev/zero")
+	r.MaxOutput = 0
+
+	_, err := r.View(t.Context(), "pass://share/item")
+	if !errors.Is(err, errOutputTooLarge) {
+		t.Errorf("View error = %v, want errOutputTooLarge", err)
+	}
+}
+
+func TestViewAtOutputLimit(t *testing.T) {
+	want := `{}`
+	r := newRunner(t, `printf '`+want+`'`)
+	r.MaxOutput = int64(len(want))
+
+	got, err := r.View(t.Context(), "pass://share/item")
+	if err != nil {
+		t.Fatalf("View with output of exactly MaxOutput bytes: %v", err)
+	}
+	if string(got) != want {
+		t.Errorf("View = %q, want %q", got, want)
 	}
 }
