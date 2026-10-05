@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/hugoz6/protonpass-server/internal/passcli"
 	"github.com/hugoz6/protonpass-server/internal/protocol"
 )
 
@@ -25,7 +24,7 @@ func NewHandler(v Viewer, log *slog.Logger) http.Handler {
 		uri := r.URL.Query().Get(protocol.URIParam)
 
 		// first validate uri
-		if err := passcli.ValidateURI(uri); err != nil {
+		if err := protocol.ValidateURI(uri); err != nil {
 			http.Error(w, "invalid uri", http.StatusBadRequest)
 			return
 		}
