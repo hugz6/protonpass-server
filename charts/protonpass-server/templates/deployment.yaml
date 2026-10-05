@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "protonpass-server.fullname" . }}
+  labels:
+    {{- include "protonpass-server.labels" . | nindent 4 }}
+spec:
+  # one pass-cli session per Pod: do not scale without thinking about it
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "protonpass-server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "protonpass-server.labels" . | nindent 8 }}
+    spec:
+      # neither container calls the Kubernetes API
+      automountServiceAccountToken: false
+      # no environment variables injected for every Service of the namespace
+      enableServiceLinks: false
+      # longer than the 20s graceful shutdown of both binaries
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        # shared group: owns the socket volume, both containers belong to it
+        fsGroup: {{ .Values.fsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: broker
+          image: {{ include "protonpass-server.brokerImage" . | quote }}
+          imagePullPolicy: {{ .Values.broker.image.pullPolicy }}
+          args:
+            - -socket=/run/protonpass/sock/broker.sock
+            # the broker only accepts the uid actually given to the gateway
+            - -allowed-uid={{ .Values.gateway.uid }}
+            - -home=/home/pass
+            - -pat-file=/secrets/pat/pat
+            - -timeout={{ .Values.broker.timeout }}
+            - -max-concurrent={{ .Values.broker.maxConcurrent }}
+          securityContext:
+            runAsUser: {{ .Values.broker.uid }}
+            # files it creates (socket) belong to the shared group
+            runAsGroup: {{ .Values.fsGroup }}
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: sock
+              mountPath: /run/protonpass
+            - name: pass-home
+              mountPath: /home/pass
+            - name: pat
+              mountPath: /secrets/pat
+              readOnly: true
+          # no probe: its socket only accepts the gateway, whose /readyz checks it
+          resources:
+            {{- toYaml .Values.resources.broker | nindent 12 }}
+        - name: gateway
+          image: {{ include "protonpass-server.gatewayImage" . | quote }}
+          imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
+          args:
+            - -listen=:8443
+            - -token-file=/secrets/token/token
+            - -tls-cert=/tls/tls.crt
+            - -tls-key=/tls/tls.key
+            - -broker-socket=/run/protonpass/sock/broker.sock
+            - -timeout={{ .Values.gateway.timeout }}
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          securityContext:
+            runAsUser: {{ .Values.gateway.uid }}
+            runAsGroup: {{ .Values.fsGroup }}
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: sock
+              mountPath: /run/protonpass
+            - name: token
+              mountPath: /secrets/token
+              readOnly: true
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: https
+              scheme: HTTPS
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: https
+              scheme: HTTPS
+          resources:
+            {{- toYaml .Values.resources.gateway | nindent 12 }}
+      volumes:
+        # in RAM: the socket and the pass-cli session never touch the node disk
+        - name: sock
+          emptyDir:
+            medium: Memory
+        - name: pass-home
+          emptyDir:
+            medium: Memory
+        # each secret is mounted only where it is used
+        - name: pat
+          secret:
+            secretName: {{ .Values.secrets.pat }}
+            defaultMode: 0440
+        - name: token
+          secret:
+            secretName: {{ .Values.secrets.token }}
+            defaultMode: 0440
+        - name: tls
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+            defaultMode: 0440
