@@ -99,6 +99,8 @@ func TestHandlerBuildsURI(t *testing.T) {
 		{"field", "/v1/secrets/share/item?field=password", "pass://share/item/password"},
 		{"field with space", "/v1/secrets/share/item?field=My%20Field", "pass://share/item/My Field"},
 		{"base64 ids", "/v1/secrets/abc123==/d-e_f==", "pass://abc123==/d-e_f=="},
+		// ESO escapes key and property itself (url.QueryEscape)
+		{"escaped by ESO", "/v1/secrets/abc123%3D%3D%2Fd-e_f%3D%3D?field=My+Field", "pass://abc123==/d-e_f==/My Field"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -174,6 +176,8 @@ func TestHandlerErrors(t *testing.T) {
 		{"invalid share", http.MethodGet, "/v1/secrets/sh;are/item", nil, http.StatusBadRequest, false},
 		{"encoded slash in share", http.MethodGet, "/v1/secrets/a%2Fb/item", nil, http.StatusBadRequest, false},
 		{"encoded slash in item", http.MethodGet, "/v1/secrets/share/a%2Fb", nil, http.StatusBadRequest, false},
+		{"extra slash", http.MethodGet, "/v1/secrets/share/item/extra", nil, http.StatusBadRequest, false},
+		{"missing item", http.MethodGet, "/v1/secrets/share", nil, http.StatusBadRequest, false},
 		{"slash in field", http.MethodGet, "/v1/secrets/share/item?field=a/b", nil, http.StatusBadRequest, false},
 		{"newline in field", http.MethodGet, "/v1/secrets/share/item?field=a%0Ab", nil, http.StatusBadRequest, false},
 		{"broker rejects", http.MethodGet, "/v1/secrets/share/item", fmt.Errorf("broker: %w", ErrInvalid), http.StatusBadRequest, true},

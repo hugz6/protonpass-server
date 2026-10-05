@@ -44,11 +44,11 @@ func authorized(header, token string) bool {
 	return subtle.ConstantTimeCompare([]byte(sentToken), []byte(token)) == 1
 }
 
-// NewHandler serves GET /v1/secrets/{share}/{item}?field=FIELD for ESO,
+// NewHandler serves GET /v1/secrets/SHARE/ITEM?field=FIELD for ESO,
 // authenticated by a bearer token, and reads items through b.
 func NewHandler(b Broker, token string, log *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /v1/secrets/{share}/{item}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /v1/secrets/{ref...}", func(w http.ResponseWriter, r *http.Request) {
 		// first authenticate, an anonymous caller must learn nothing
 		if !authorized(r.Header.Get("Authorization"), token) {
 			w.Header().Set("WWW-Authenticate", "Bearer")
@@ -56,15 +56,17 @@ func NewHandler(b Broker, token string, log *slog.Logger) http.Handler {
 			return
 		}
 
-		// get share and item from url path, values are already decoded
-		share := r.PathValue("share")
-		item := r.PathValue("item")
+		// get SHARE/ITEM from url path, already decoded: ESO sends it escaped
+		// (share%2Fitem), curl unescaped (share/item), both end up the same
+		ref := strings.Split(r.PathValue("ref"), "/")
 
-		// a decoded %2F would silently shift item into field
-		if strings.Contains(share, "/") || strings.Contains(item, "/") {
+		// exactly two parts: an extra / would silently shift item into field
+		if len(ref) != 2 {
 			http.Error(w, "invalid secret reference", http.StatusBadRequest)
 			return
 		}
+		share := ref[0]
+		item := ref[1]
 
 		// build uri, an empty field means the whole item
 		uri := "pass://" + share + "/" + item
