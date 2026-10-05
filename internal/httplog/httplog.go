@@ -23,7 +23,7 @@ func (s *statusRecorder) Unwrap() http.ResponseWriter {
 	return s.ResponseWriter
 }
 
-// Middleware logs method, path, status and duration of every request served
+// Middleware logs method, path, status and duration (ms) of every request served
 // by next. Headers and the query string are never logged: they may carry a
 // token or a field name.
 func Middleware(log *slog.Logger, next http.Handler) http.Handler {
@@ -36,7 +36,7 @@ func Middleware(log *slog.Logger, next http.Handler) http.Handler {
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rec.status,
-			"duration", time.Since(start),
+			"duration_ms", time.Since(start).Milliseconds(),
 		)
 	})
 }

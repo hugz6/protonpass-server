@@ -42,8 +42,8 @@ func TestMiddlewareLogsRequest(t *testing.T) {
 	if line["status"] != float64(http.StatusTeapot) {
 		t.Errorf("status = %v, want %d", line["status"], http.StatusTeapot)
 	}
-	if _, ok := line["duration"]; !ok {
-		t.Error("log line has no duration")
+	if _, ok := line["duration_ms"].(float64); !ok {
+		t.Errorf("duration_ms = %v, want a number of milliseconds", line["duration_ms"])
 	}
 }
 
