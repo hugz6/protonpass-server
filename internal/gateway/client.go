@@ -78,6 +78,9 @@ func (c *Client) View(ctx context.Context, uri string) (json.RawMessage, error) 
 	if resp.StatusCode == http.StatusGatewayTimeout {
 		return nil, ErrTimeout
 	}
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		return nil, ErrBusy
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("broker returned status %d", resp.StatusCode)
 	}

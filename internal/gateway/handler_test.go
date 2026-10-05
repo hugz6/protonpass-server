@@ -178,6 +178,7 @@ func TestHandlerErrors(t *testing.T) {
 		{"newline in field", http.MethodGet, "/v1/secrets/share/item?field=a%0Ab", nil, http.StatusBadRequest, false},
 		{"broker rejects", http.MethodGet, "/v1/secrets/share/item", fmt.Errorf("broker: %w", ErrInvalid), http.StatusBadRequest, true},
 		{"broker timeout", http.MethodGet, "/v1/secrets/share/item", fmt.Errorf("broker: %w", ErrTimeout), http.StatusGatewayTimeout, true},
+		{"broker busy", http.MethodGet, "/v1/secrets/share/item", fmt.Errorf("broker: %w", ErrBusy), http.StatusServiceUnavailable, true},
 		{"broker failure", http.MethodGet, "/v1/secrets/share/item", errors.New("exit status 1: s3cret"), http.StatusBadGateway, true},
 		{"wrong method", http.MethodPost, "/v1/secrets/share/item", nil, http.StatusMethodNotAllowed, false},
 		{"unknown path", http.MethodGet, "/v1/other", nil, http.StatusNotFound, false},

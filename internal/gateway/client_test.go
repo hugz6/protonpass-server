@@ -84,12 +84,14 @@ func TestClientStatusErrors(t *testing.T) {
 		status      int
 		wantInvalid bool
 		wantTimeout bool
+		wantBusy    bool
 	}{
-		{"bad request", http.StatusBadRequest, true, false},
-		{"gateway timeout", http.StatusGatewayTimeout, false, true},
-		{"bad gateway", http.StatusBadGateway, false, false},
-		{"internal error", http.StatusInternalServerError, false, false},
-		{"not found", http.StatusNotFound, false, false},
+		{"bad request", http.StatusBadRequest, true, false, false},
+		{"gateway timeout", http.StatusGatewayTimeout, false, true, false},
+		{"service unavailable", http.StatusServiceUnavailable, false, false, true},
+		{"bad gateway", http.StatusBadGateway, false, false, false},
+		{"internal error", http.StatusInternalServerError, false, false, false},
+		{"not found", http.StatusNotFound, false, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -104,6 +106,9 @@ func TestClientStatusErrors(t *testing.T) {
 			}
 			if got := errors.Is(err, ErrTimeout); got != tt.wantTimeout {
 				t.Errorf("errors.Is(err, ErrTimeout) = %v, want %v (err: %v)", got, tt.wantTimeout, err)
+			}
+			if got := errors.Is(err, ErrBusy); got != tt.wantBusy {
+				t.Errorf("errors.Is(err, ErrBusy) = %v, want %v (err: %v)", got, tt.wantBusy, err)
 			}
 		})
 	}
