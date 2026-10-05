@@ -1,0 +1,67 @@
+# No secret in this file: it ends up in git, and Helm stores every installed
+# version of it in the cluster. Secrets are referenced by name instead.
+
+gateway:
+  image:
+    repository: ghcr.io/hugoz6/protonpass-gateway
+    # empty: use .Chart.AppVersion
+    tag: ""
+    pullPolicy: IfNotPresent
+  # the broker only accepts connections from this uid
+  uid: 10002
+  # must outlast broker.timeout, or the gateway gives up before the answer
+  timeout: 35s
+
+broker:
+  image:
+    repository: ghcr.io/hugoz6/protonpass-broker
+    tag: ""
+    pullPolicy: IfNotPresent
+  uid: 10001
+  # per pass-cli call
+  timeout: 30s
+  # pass-cli calls running at the same time
+  maxConcurrent: 4
+
+# group shared by both containers: owns the socket volume
+fsGroup: 10000
+
+# existing Secrets, created outside the chart
+secrets:
+  # key "pat": Proton Pass personal access token (pst_<token>::<key>)
+  pat: protonpass-pat
+  # key "token": bearer token ESO sends to the gateway
+  token: protonpass-gateway-token
+
+tls:
+  # Secret of type kubernetes.io/tls with tls.crt, tls.key and ca.crt
+  secretName: protonpass-gateway-tls
+  certManager:
+    # create the certificate with cert-manager instead of providing the Secret
+    enabled: false
+    issuerRef:
+      name: ""
+      kind: Issuer
+
+eso:
+  # namespace allowed to reach the gateway (NetworkPolicy)
+  namespace: external-secrets
+  clusterSecretStore:
+    create: true
+    name: protonpass
+    # where the value is in pass-cli JSON output: to be determined
+    jsonPath: ""
+
+resources:
+  gateway:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
+  broker:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi

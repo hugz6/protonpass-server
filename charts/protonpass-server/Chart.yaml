@@ -1,0 +1,10 @@
+apiVersion: v2
+name: protonpass-server
+description: Read Proton Pass secrets from External Secrets Operator, through a gateway and a pass-cli broker isolated in one Pod.
+type: application
+
+# chart version: bump on every chart change (semver)
+version: 0.1.0
+
+# application version: default tag of both images
+appVersion: "0.1.0"
