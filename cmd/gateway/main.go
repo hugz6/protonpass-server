@@ -51,9 +51,16 @@ func run(logger *slog.Logger) error {
 
 	client := gateway.NewClient(*socket, *timeout)
 
+	// secrets need the token, kubelet probes do not
+	mux := http.NewServeMux()
+	mux.Handle("/v1/secrets/", gateway.NewHandler(client, trimmedToken, logger))
+	probes := gateway.NewProbeHandler(client.Ready, logger)
+	mux.Handle("/healthz", probes)
+	mux.Handle("/readyz", probes)
+
 	srv := &http.Server{
 		Addr:    *listen,
-		Handler: gateway.NewHandler(client, trimmedToken, logger),
+		Handler: mux,
 		// slow or idle clients must not hold connections forever
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,

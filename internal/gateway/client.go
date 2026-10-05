@@ -91,3 +91,24 @@ func (c *Client) View(ctx context.Context, uri string) (json.RawMessage, error) 
 	}
 	return body, nil
 }
+
+// Ready reports whether the broker can serve items.
+func (c *Client) Ready(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://broker"+protocol.ReadyPath, nil)
+	if err != nil {
+		return fmt.Errorf("error while building broker request: %w", err)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("error while calling broker: %w", err)
+	}
+	// drain the small body so the connection can be reused
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<10))
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("broker not ready: status %d", resp.StatusCode)
+	}
+	return nil
+}
