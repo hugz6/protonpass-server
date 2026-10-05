@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hugoz6/protonpass-server/internal/broker"
+	"github.com/hugoz6/protonpass-server/internal/httplog"
 	"github.com/hugoz6/protonpass-server/internal/passcli"
 	"github.com/hugoz6/protonpass-server/internal/protocol"
 )
@@ -92,7 +93,7 @@ func run(logger *slog.Logger) error {
 	mux.Handle("GET "+protocol.ReadyPath, broker.NewReadyHandler(passCliRunner.Info, 10*time.Second, logger))
 
 	srv := &http.Server{
-		Handler:           mux,
+		Handler:           httplog.Middleware(logger, mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		// Must outlast a pass-cli call, or the response is cut before it is ready.
 		WriteTimeout: *timeout + 5*time.Second,

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/hugoz6/protonpass-server/internal/gateway"
+	"github.com/hugoz6/protonpass-server/internal/httplog"
 )
 
 func main() {
@@ -60,7 +61,7 @@ func run(logger *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr:    *listen,
-		Handler: mux,
+		Handler: httplog.Middleware(logger, mux),
 		// slow or idle clients must not hold connections forever
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
