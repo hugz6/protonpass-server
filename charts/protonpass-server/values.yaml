@@ -30,11 +30,13 @@ fsGroup: 10000
 secrets:
   # key "pat": Proton Pass personal access token (pst_<token>::<key>)
   pat: protonpass-pat
-  # key "token": bearer token ESO sends to the gateway
+  # key "token": bearer token ESO sends to the gateway. ESO only reads it if
+  # the Secret carries the label external-secrets.io/type=webhook
   token: protonpass-gateway-token
 
 tls:
-  # Secret of type kubernetes.io/tls with tls.crt, tls.key and ca.crt
+  # Secret of type kubernetes.io/tls with tls.crt, tls.key and ca.crt; needs the
+  # label external-secrets.io/type=webhook (set automatically with cert-manager)
   secretName: protonpass-gateway-tls
   certManager:
     # create the certificate with cert-manager instead of providing the Secret

@@ -9,6 +9,10 @@ metadata:
     {{- include "protonpass-server.labels" . | nindent 4 }}
 spec:
   secretName: {{ .Values.tls.secretName }}
+  # ESO only reads Secrets carrying this label (caProvider)
+  secretTemplate:
+    labels:
+      external-secrets.io/type: webhook
   # the names ESO uses in the store URL
   dnsNames:
     - {{ include "protonpass-server.fullname" . }}.{{ .Release.Namespace }}.svc
