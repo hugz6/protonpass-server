@@ -14,6 +14,11 @@
 //	503  too many pass-cli calls already running
 //	504  pass-cli timed out
 //
+//	GET ReadyPath
+//
+//	200  the pass-cli session is valid
+//	503  it is not
+//
 // Error bodies are fixed messages: they never carry pass-cli output or error
 // details, which stay in the broker logs.
 package protocol
@@ -23,4 +28,6 @@ const (
 	ItemsPath = "/v1/items"
 	// URIParam is the query parameter holding the pass:// URI to read.
 	URIParam = "uri"
+	// ReadyPath reports whether the broker can serve items.
+	ReadyPath = "/v1/ready"
 )

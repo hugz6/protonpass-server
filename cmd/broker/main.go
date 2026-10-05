@@ -17,6 +17,7 @@ import (
 
 	"github.com/hugoz6/protonpass-server/internal/broker"
 	"github.com/hugoz6/protonpass-server/internal/passcli"
+	"github.com/hugoz6/protonpass-server/internal/protocol"
 )
 
 func main() {
@@ -85,8 +86,13 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("listening: %w", err)
 	}
 
+	// items go through the concurrency limit, readiness reads a cached session check
+	mux := http.NewServeMux()
+	mux.Handle(protocol.ItemsPath, broker.NewHandler(broker.Limit(passCliRunner, *maxConcurrent), logger))
+	mux.Handle("GET "+protocol.ReadyPath, broker.NewReadyHandler(passCliRunner.Info, 10*time.Second, logger))
+
 	srv := &http.Server{
-		Handler:           broker.NewHandler(broker.Limit(passCliRunner, *maxConcurrent), logger),
+		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		// Must outlast a pass-cli call, or the response is cut before it is ready.
 		WriteTimeout: *timeout + 5*time.Second,
