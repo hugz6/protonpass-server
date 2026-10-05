@@ -1,0 +1,23 @@
+{{- if .Values.tls.certManager.enabled }}
+# cert-manager writes tls.crt, tls.key and ca.crt into tls.secretName and
+# renews them; ESO trusts ca.crt to reach the gateway.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "protonpass-server.fullname" . }}
+  labels:
+    {{- include "protonpass-server.labels" . | nindent 4 }}
+spec:
+  secretName: {{ .Values.tls.secretName }}
+  # the names ESO uses in the store URL
+  dnsNames:
+    - {{ include "protonpass-server.fullname" . }}.{{ .Release.Namespace }}.svc
+    - {{ include "protonpass-server.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ required "tls.certManager.issuerRef.name is required when tls.certManager.enabled" .Values.tls.certManager.issuerRef.name }}
+    kind: {{ .Values.tls.certManager.issuerRef.kind }}
+{{- end }}
