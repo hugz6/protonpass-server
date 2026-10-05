@@ -22,6 +22,15 @@ const (
 // errOutputTooLarge is raised when exceeding MaxOutput
 var errOutputTooLarge = errors.New("pass-cli output too large")
 
+// baseEnv is passed to pass-cli on every call, besides HOME.
+var baseEnv = []string{
+	// No keyring in a container: keep the session key in a file next to
+	// the session database.
+	"PROTON_PASS_KEY_PROVIDER=fs",
+	// pass-cli is updated by rebuilding the image, never by itself.
+	"PROTON_PASS_NO_UPDATE_CHECK=1",
+}
+
 // regex for SHARE and ITEM
 var idPattern = regexp.MustCompile(`^[A-Za-z0-9_=-]+$`)
 
@@ -116,6 +125,7 @@ func (r *Runner) View(ctx context.Context, uri string) (json.RawMessage, error) 
 	// setup pass-cli exec with ctx and shell-less
 	cmd := exec.CommandContext(viewCtx, r.Bin, "item", "view", uri, "--output", "json")
 	cmd.Env = []string{"HOME=" + r.Home}
+	cmd.Env = append(cmd.Env, baseEnv...)
 	cmd.WaitDelay = time.Millisecond * 500
 
 	// create the stdout reader

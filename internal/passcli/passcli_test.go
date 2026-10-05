@@ -166,13 +166,14 @@ func TestViewInvalidJSON(t *testing.T) {
 
 func TestViewIsolatesEnvironment(t *testing.T) {
 	t.Setenv("PPS_LEAK", "secret-from-parent")
-	r := newRunner(t, `printf '{"leak":"%s","home":"%s"}' "$PPS_LEAK" "$HOME"`)
+	r := newRunner(t, `printf '{"leak":"%s","home":"%s","keyProvider":"%s","noUpdateCheck":"%s"}' `+
+		`"$PPS_LEAK" "$HOME" "$PROTON_PASS_KEY_PROVIDER" "$PROTON_PASS_NO_UPDATE_CHECK"`)
 
 	out, err := r.View(t.Context(), "pass://share/item")
 	if err != nil {
 		t.Fatalf("View: %v", err)
 	}
-	var got struct{ Leak, Home string }
+	var got struct{ Leak, Home, KeyProvider, NoUpdateCheck string }
 	if err := json.Unmarshal(out, &got); err != nil {
 		t.Fatalf("decoding fake pass-cli output: %v", err)
 	}
@@ -181,6 +182,12 @@ func TestViewIsolatesEnvironment(t *testing.T) {
 	}
 	if got.Home != r.Home {
 		t.Errorf("HOME = %q, want %q", got.Home, r.Home)
+	}
+	if got.KeyProvider != "fs" {
+		t.Errorf("PROTON_PASS_KEY_PROVIDER = %q, want %q", got.KeyProvider, "fs")
+	}
+	if got.NoUpdateCheck != "1" {
+		t.Errorf("PROTON_PASS_NO_UPDATE_CHECK = %q, want %q", got.NoUpdateCheck, "1")
 	}
 }
 
