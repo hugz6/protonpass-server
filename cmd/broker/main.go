@@ -34,12 +34,16 @@ func run(logger *slog.Logger) error {
 	homePath := flag.String("home", "", "home")
 	patPath := flag.String("pat-file", "", "path of the file containing the pat for pass-cli")
 	timeout := flag.Duration("timeout", 30*time.Second, "timeout per pass-cli call")
+	maxConcurrent := flag.Int("max-concurrent", 4, "maximum pass-cli calls running at the same time")
 	flag.Parse()
 
 	logger.Info("broker starting")
 
 	if *allowedUID <= 0 {
 		return errors.New("-allowed-uid must be > 0 (non root)")
+	}
+	if *maxConcurrent <= 0 {
+		return errors.New("-max-concurrent must be > 0")
 	}
 	if *homePath == "" || *patPath == "" {
 		return errors.New("-home and -pat-file must be specified")
@@ -82,7 +86,7 @@ func run(logger *slog.Logger) error {
 	}
 
 	srv := &http.Server{
-		Handler:           broker.NewHandler(passCliRunner, logger),
+		Handler:           broker.NewHandler(broker.Limit(passCliRunner, *maxConcurrent), logger),
 		ReadHeaderTimeout: 5 * time.Second,
 		// Must outlast a pass-cli call, or the response is cut before it is ready.
 		WriteTimeout: *timeout + 5*time.Second,

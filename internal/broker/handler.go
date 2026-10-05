@@ -32,6 +32,10 @@ func NewHandler(v Viewer, log *slog.Logger) http.Handler {
 		out, err := v.View(r.Context(), uri)
 		if err != nil {
 			log.Error("view failed", "uri", uri, "err", err)
+			if errors.Is(err, ErrBusy) {
+				http.Error(w, "too many requests running", http.StatusServiceUnavailable)
+				return
+			}
 			if errors.Is(err, context.DeadlineExceeded) {
 				http.Error(w, "deadline exceeded", http.StatusGatewayTimeout)
 				return

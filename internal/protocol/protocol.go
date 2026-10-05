@@ -11,6 +11,7 @@
 //	400  missing or invalid uri
 //	405  method other than GET
 //	502  pass-cli failed
+//	503  too many pass-cli calls already running
 //	504  pass-cli timed out
 //
 // Error bodies are fixed messages: they never carry pass-cli output or error

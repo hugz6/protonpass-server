@@ -71,6 +71,7 @@ func TestHandlerErrors(t *testing.T) {
 		{"missing uri", http.MethodGet, "", nil, http.StatusBadRequest, false},
 		{"timeout", http.MethodGet, "pass://share/item", fmt.Errorf("pass-cli: %w", context.DeadlineExceeded), http.StatusGatewayTimeout, true},
 		{"failure", http.MethodGet, "pass://share/item", errors.New("exit status 1: s3cret"), http.StatusBadGateway, true},
+		{"busy", http.MethodGet, "pass://share/item", fmt.Errorf("%w: %w", ErrBusy, context.DeadlineExceeded), http.StatusServiceUnavailable, true},
 		{"wrong method", http.MethodPost, "pass://share/item", nil, http.StatusMethodNotAllowed, false},
 	}
 	for _, tt := range tests {
