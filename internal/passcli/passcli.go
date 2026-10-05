@@ -162,3 +162,13 @@ func (r *Runner) Login(ctx context.Context, pat string) error {
 	}
 	return nil
 }
+
+// Info checks that the pass-cli session is still valid.
+func (r *Runner) Info(ctx context.Context) error {
+	// pass-cli info fails when there is no authenticated session
+	_, err := r.run(ctx, nil, "info", "--output", "json")
+	if err != nil {
+		return fmt.Errorf("error while checking pass-cli session: %w", err)
+	}
+	return nil
+}

@@ -417,3 +417,31 @@ func TestRedact(t *testing.T) {
 		})
 	}
 }
+
+func TestInfoPassesExactArgs(t *testing.T) {
+	r := newRunner(t, `printf '%s\n' "$@" > "$HOME/args"; printf '{}'`)
+
+	if err := r.Info(t.Context()); err != nil {
+		t.Fatalf("Info: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(r.Home, "args"))
+	if err != nil {
+		t.Fatalf("reading recorded args: %v", err)
+	}
+	if want := "info\n--output\njson\n"; string(got) != want {
+		t.Errorf("args = %q, want %q", got, want)
+	}
+}
+
+func TestInfoNoSession(t *testing.T) {
+	r := newRunner(t, `echo 'Error: This operation requires an authenticated client' >&2; exit 1`)
+
+	err := r.Info(t.Context())
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("Info error = %v, want an *exec.ExitError", err)
+	}
+	if !strings.Contains(err.Error(), "authenticated client") {
+		t.Errorf("Info error = %q, want pass-cli stderr in it", err)
+	}
+}
