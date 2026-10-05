@@ -4,18 +4,25 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/hugoz6/protonpass-server/internal/gateway"
+	"github.com/hugoz6/protonpass-server/internal/graceful"
 	"github.com/hugoz6/protonpass-server/internal/httplog"
 )
+
+// shutdownTimeout stays under the 30s Kubernetes gives before SIGKILL.
+const shutdownTimeout = 20 * time.Second
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
@@ -73,5 +80,11 @@ func run(logger *slog.Logger) error {
 		ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 	}
 	logger.Info("gateway listening", "addr", *listen, "broker_socket", *socket)
-	return srv.ListenAndServeTLS(*certPath, *keyPath)
+
+	// kubernetes sends SIGTERM, then SIGKILL after 30s: finish running calls before
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	err = graceful.Run(ctx, srv, func() error { return srv.ListenAndServeTLS(*certPath, *keyPath) }, shutdownTimeout)
+	logger.Info("gateway stopped")
+	return err
 }
