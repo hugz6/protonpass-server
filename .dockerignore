@@ -1,0 +1,7 @@
+# only go.mod, cmd/ and internal/ are needed to build the images
+.git
+.direnv
+.codegraph
+bin
+docs
+charts
