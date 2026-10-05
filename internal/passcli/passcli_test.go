@@ -191,6 +191,19 @@ func TestViewIsolatesEnvironment(t *testing.T) {
 	}
 }
 
+func TestViewPassesNoExtraEnv(t *testing.T) {
+	// View has no secret to pass: the token variable must not exist.
+	r := newRunner(t, `printf '{"pat":"%s"}' "$PROTON_PASS_PERSONAL_ACCESS_TOKEN"`)
+
+	out, err := r.View(t.Context(), "pass://share/item")
+	if err != nil {
+		t.Fatalf("View: %v", err)
+	}
+	if string(out) != `{"pat":""}` {
+		t.Errorf("View output = %s, want no token in pass-cli env", out)
+	}
+}
+
 func TestViewTimeout(t *testing.T) {
 	sleep := lookPath(t, "sleep")
 	// The trailing echo keeps sh alive as the parent of sleep, so sleep
@@ -324,5 +337,120 @@ func TestViewStderrSeveralWrites(t *testing.T) {
 	}
 	if len(err.Error()) > 1024 {
 		t.Errorf("error is %d bytes long, want stderr truncated", len(err.Error()))
+	}
+}
+
+func TestLoginPassesTokenThroughEnv(t *testing.T) {
+	r := newRunner(t, `printf '%s\n' "$@" > "$HOME/args"; `+
+		`printf '%s' "$PROTON_PASS_PERSONAL_ACCESS_TOKEN" > "$HOME/pat"; `+
+		`printf '%s' "$PROTON_PASS_KEY_PROVIDER" > "$HOME/keyprovider"`)
+	pat := "pst_abc::def"
+
+	if err := r.Login(t.Context(), pat); err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	args, err := os.ReadFile(filepath.Join(r.Home, "args"))
+	if err != nil {
+		t.Fatalf("reading recorded args: %v", err)
+	}
+	if string(args) != "login\n" {
+		t.Errorf("args = %q, want only %q: the token must not be an argument", args, "login\n")
+	}
+	got, err := os.ReadFile(filepath.Join(r.Home, "pat"))
+	if err != nil {
+		t.Fatalf("reading recorded token: %v", err)
+	}
+	if string(got) != pat {
+		t.Errorf("token in env = %q, want %q", got, pat)
+	}
+	// Login shares run with View: the base environment must apply too.
+	keyProvider, err := os.ReadFile(filepath.Join(r.Home, "keyprovider"))
+	if err != nil {
+		t.Fatalf("reading recorded key provider: %v", err)
+	}
+	if string(keyProvider) != "fs" {
+		t.Errorf("PROTON_PASS_KEY_PROVIDER = %q, want %q", keyProvider, "fs")
+	}
+}
+
+func TestLoginSucceedsWithNonJSONOutput(t *testing.T) {
+	// pass-cli login prints human-readable text, not JSON.
+	r := newRunner(t, `echo 'Logged in successfully'`)
+
+	if err := r.Login(t.Context(), "pst_abc::def"); err != nil {
+		t.Errorf("Login: %v", err)
+	}
+}
+
+func TestLoginSucceedsWithEmptyOutput(t *testing.T) {
+	r := newRunner(t, `exit 0`)
+
+	if err := r.Login(t.Context(), "pst_abc::def"); err != nil {
+		t.Errorf("Login: %v", err)
+	}
+}
+
+func TestLoginRejectsEmptyTokenWithoutExec(t *testing.T) {
+	r := newRunner(t, `: > "$HOME/ran"`)
+
+	if err := r.Login(t.Context(), ""); !errors.Is(err, errEmptyPAT) {
+		t.Errorf("Login error = %v, want errEmptyPAT", err)
+	}
+	if _, err := os.Stat(filepath.Join(r.Home, "ran")); !errors.Is(err, fs.ErrNotExist) {
+		t.Error("pass-cli was executed without a token")
+	}
+}
+
+func TestLoginRedactsTokenFromError(t *testing.T) {
+	pat := "pst_secret::key"
+	r := newRunner(t, `echo "bad token $PROTON_PASS_PERSONAL_ACCESS_TOKEN" >&2; exit 1`)
+
+	err := r.Login(t.Context(), pat)
+	if err == nil {
+		t.Fatal("Login returned nil error on non-zero exit")
+	}
+	if strings.Contains(err.Error(), pat) {
+		t.Errorf("error leaks the token: %v", err)
+	}
+	if !strings.Contains(err.Error(), "bad token [REDACTED]") {
+		t.Errorf("error = %q, want stderr kept with the token redacted", err)
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Errorf("Login error = %v, want it to wrap the *exec.ExitError", err)
+	}
+}
+
+func TestLoginTimeout(t *testing.T) {
+	sleep := lookPath(t, "sleep")
+	r := newRunner(t, sleep+" 10; echo done")
+	r.Timeout = 200 * time.Millisecond
+
+	if err := r.Login(t.Context(), "pst_abc::def"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Login error = %v, want context.DeadlineExceeded", err)
+	}
+}
+
+func TestRedact(t *testing.T) {
+	tests := []struct {
+		name      string
+		s         string
+		secretEnv []string
+		want      string
+	}{
+		{"no secret", "bad token", nil, "bad token"},
+		{"one secret", "bad token abc", []string{"T=abc"}, "bad token [REDACTED]"},
+		{"repeated", "abc and abc", []string{"T=abc"}, "[REDACTED] and [REDACTED]"},
+		{"several secrets", "abc xyz", []string{"A=abc", "B=xyz"}, "[REDACTED] [REDACTED]"},
+		{"value with =", "a=b leaked", []string{"T=a=b"}, "[REDACTED] leaked"},
+		{"empty value", "unchanged", []string{"T="}, "unchanged"},
+		{"no = sign", "unchanged", []string{"T"}, "unchanged"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := redact(tt.s, tt.secretEnv); got != tt.want {
+				t.Errorf("redact(%q, %q) = %q, want %q", tt.s, tt.secretEnv, got, tt.want)
+			}
+		})
 	}
 }
