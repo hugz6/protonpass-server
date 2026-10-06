@@ -185,3 +185,24 @@ func (r *Runner) Info(ctx context.Context) error {
 	}
 	return nil
 }
+
+// EnsureSession reuses a valid pass-cli session, or logs in with pat. It
+// reports whether the session was reused.
+//
+// The session lives in HOME, which outlives the container when it restarts in
+// the same Pod, and pass-cli refuses a second login ("Already authenticated").
+func (r *Runner) EnsureSession(ctx context.Context, pat string) (bool, error) {
+	// a valid session left by a previous container: keep it
+	if err := r.Info(ctx); err == nil {
+		return true, nil
+	}
+
+	// an expired or broken session would block the login: drop it first. It
+	// fails when there is no session at all, which is fine
+	r.run(ctx, nil, "logout", "--force")
+
+	if err := r.Login(ctx, pat); err != nil {
+		return false, err
+	}
+	return false, nil
+}

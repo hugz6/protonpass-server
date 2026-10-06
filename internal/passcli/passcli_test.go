@@ -497,3 +497,102 @@ func TestViewWholeItemIsReturnedAsIs(t *testing.T) {
 		t.Errorf("View = %q, want %q", got, want)
 	}
 }
+
+// sessionCLI returns a fake pass-cli that keeps its session in $HOME/session,
+// and refuses a second login like the real one. $HOME/broken makes info fail.
+// rm is external: the runner clears PATH, so it needs an absolute path.
+func sessionCLI(t *testing.T) string {
+	return strings.ReplaceAll(sessionScript, "rm ", lookPath(t, "rm")+" ")
+}
+
+const sessionScript = `echo "$1" >> "$HOME/calls"
+case "$1" in
+  login)
+    if [ -f "$HOME/session" ]; then echo 'Error: Already authenticated' >&2; exit 1; fi
+    : > "$HOME/session" ;;
+  info)
+    [ -f "$HOME/session" ] && [ ! -f "$HOME/broken" ] || exit 1 ;;
+  logout)
+    rm -f "$HOME/session" "$HOME/broken" ;;
+esac`
+
+// calls returns the pass-cli commands run so far, one per line.
+func calls(t *testing.T, r *Runner) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(r.Home, "calls"))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func touch(t *testing.T, path string) {
+	t.Helper()
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEnsureSession(t *testing.T) {
+	tests := []struct {
+		name       string
+		session    bool // a session is already in HOME
+		broken     bool // and it is no longer valid
+		wantReused bool
+		wantCalls  string
+	}{
+		{"no session", false, false, false, "info\nlogout\nlogin\n"},
+		{"valid session after a container restart", true, false, true, "info\n"},
+		{"expired session", true, true, false, "info\nlogout\nlogin\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newRunner(t, sessionCLI(t))
+			if tt.session {
+				touch(t, filepath.Join(r.Home, "session"))
+			}
+			if tt.broken {
+				touch(t, filepath.Join(r.Home, "broken"))
+			}
+
+			reused, err := r.EnsureSession(t.Context(), "pst_abc::def")
+			if err != nil {
+				t.Fatalf("EnsureSession: %v", err)
+			}
+			if reused != tt.wantReused {
+				t.Errorf("reused = %v, want %v", reused, tt.wantReused)
+			}
+			if got := calls(t, r); got != tt.wantCalls {
+				t.Errorf("pass-cli calls = %q, want %q", got, tt.wantCalls)
+			}
+			// whatever the start, the session ends up valid
+			if err := r.Info(t.Context()); err != nil {
+				t.Errorf("session not valid after EnsureSession: %v", err)
+			}
+		})
+	}
+}
+
+func TestEnsureSessionTwice(t *testing.T) {
+	// two broker starts in a row on the same HOME, as after a container restart
+	r := newRunner(t, sessionCLI(t))
+
+	if _, err := r.EnsureSession(t.Context(), "pst_abc::def"); err != nil {
+		t.Fatalf("first EnsureSession: %v", err)
+	}
+	reused, err := r.EnsureSession(t.Context(), "pst_abc::def")
+	if err != nil {
+		t.Fatalf("second EnsureSession: %v", err)
+	}
+	if !reused {
+		t.Error("second EnsureSession logged in again instead of reusing the session")
+	}
+}
+
+func TestEnsureSessionLoginFails(t *testing.T) {
+	r := newRunner(t, `case "$1" in login) echo 'bad token' >&2; exit 1 ;; info) exit 1 ;; esac`)
+
+	if _, err := r.EnsureSession(t.Context(), "pst_abc::def"); err == nil {
+		t.Error("EnsureSession returned nil error although login failed")
+	}
+}

@@ -83,10 +83,12 @@ func run(logger *slog.Logger) error {
 		Home:    *homePath,
 		Timeout: *timeout,
 	}
-	if err := passCliRunner.Login(context.Background(), trimmedPat); err != nil {
+	// a restarted container finds the previous session in HOME: reuse it
+	reused, err := passCliRunner.EnsureSession(context.Background(), trimmedPat)
+	if err != nil {
 		return fmt.Errorf("logging in: %w", err)
 	}
-	logger.Info("pass-cli session ready")
+	logger.Info("pass-cli session ready", "reused", reused)
 
 	l, err := broker.Listen(*socket, *allowedUID, logger)
 	if err != nil {
