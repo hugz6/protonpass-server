@@ -9,6 +9,8 @@ See the [repository README](https://github.com/hugz6/protonpass-server) for how 
 ## Prerequisites
 
 - [External Secrets Operator](https://external-secrets.io) v1 API (tested with 2.11).
+- [cert-manager](https://cert-manager.io): the chart creates a private CA and the gateway
+  certificate with it. A public CA (ACME) cannot sign the gateway's internal `.svc` name anyway.
 - A Proton Pass **personal access token**, ideally limited to a dedicated vault with the `viewer`
   role:
   ```sh
@@ -16,32 +18,27 @@ See the [repository README](https://github.com/hugz6/protonpass-server) for how 
   pass-cli personal-access-token access grant --personal-access-token-name k8s \
     --vault-name k8s --role viewer
   ```
-- A TLS certificate for the gateway: either [cert-manager](https://cert-manager.io)
-  (`tls.certManager.enabled`), or a `kubernetes.io/tls` Secret with `tls.crt`, `tls.key` and
-  `ca.crt`.
 
 ## Installing
 
-Create the Secrets the chart refers to. The labels are required by ESO's webhook provider:
+The personal access token is the only Secret to create. The bearer token between ESO and the
+gateway, the private CA and the gateway certificate are created by the chart.
 
 ```sh
 kubectl create namespace protonpass
-
 kubectl -n protonpass create secret generic protonpass-pat --from-file=pat=./pat
-kubectl -n protonpass create secret generic protonpass-gateway-token \
-  --from-literal=token="$(head -c 32 /dev/urandom | base64)"
-kubectl -n protonpass label secret protonpass-gateway-token external-secrets.io/type=webhook
-```
 
-Then install the chart, here with cert-manager:
-
-```sh
 helm install protonpass oci://ghcr.io/hugz6/charts/protonpass-server \
-  --version 0.1.0 -n protonpass \
-  --set tls.certManager.enabled=true --set tls.certManager.issuerRef.name=<issuer>
+  --version 0.1.0 -n protonpass
 ```
 
-Without cert-manager, the TLS Secret must also carry the label `external-secrets.io/type=webhook`.
+To bring your own pieces instead:
+
+| To use | Set |
+|---|---|
+| your own cert-manager issuer | `tls.certManager.createCA=false`, `tls.certManager.issuerRef.name=<issuer>` |
+| a TLS Secret made without cert-manager | `tls.certManager.enabled=false`; the Secret needs `tls.crt`, `tls.key`, `ca.crt` and the label `external-secrets.io/type=webhook` |
+| your own bearer token Secret | `secrets.createToken=false`; the Secret needs the key `token` and the label `external-secrets.io/type=webhook` |
 
 ## Reading a secret
 
@@ -100,9 +97,11 @@ The IDs come from `pass-cli vault list --output json` and
 | gateway.uid | int | `10002` | UID of the gateway container. The broker only accepts connections from this UID. |
 | resources.broker | object | `{"limits":{"memory":"256Mi"},"requests":{"cpu":"50m","memory":"64Mi"}}` | Resources of the broker container (pass-cli runs here). |
 | resources.gateway | object | `{"limits":{"memory":"64Mi"},"requests":{"cpu":"10m","memory":"32Mi"}}` | Resources of the gateway container. |
-| secrets.pat | string | `"protonpass-pat"` | Name of an existing Secret holding the Proton Pass personal access token (`pst_<token>::<key>`) under the key `pat`. Mounted in the broker only. |
-| secrets.token | string | `"protonpass-gateway-token"` | Name of an existing Secret holding the bearer token ESO sends to the gateway, under the key `token`. Mounted in the gateway only. ESO only reads it if it carries the label `external-secrets.io/type=webhook`. |
-| tls.certManager.enabled | bool | `false` | Create the TLS Secret with a cert-manager `Certificate` instead of providing it. |
+| secrets.createToken | bool | `true` | Generate the token Secret (random, kept across upgrades, labelled for ESO). Set to false to provide your own: it must then carry the label `external-secrets.io/type=webhook`. |
+| secrets.pat | string | `"protonpass-pat"` | Name of an existing Secret, created by hand, holding the Proton Pass personal access token (`pst_<token>::<key>`) under the key `pat`. Mounted in the broker only. |
+| secrets.token | string | `"protonpass-gateway-token"` | Name of the Secret holding the bearer token ESO sends to the gateway, under the key `token`. Mounted in the gateway only. |
+| tls.certManager.createCA | bool | `true` | Create a private CA for the release (self-signed Issuer, CA Certificate, CA Issuer) and sign the gateway certificate with it. Set to false to use `issuerRef` instead. |
+| tls.certManager.enabled | bool | `true` | Create the TLS Secret with cert-manager. Set to false to provide the Secret yourself. |
 | tls.certManager.issuerRef.kind | string | `"Issuer"` | `Issuer` or `ClusterIssuer`. |
-| tls.certManager.issuerRef.name | string | `""` | Issuer signing the certificate. Required when `tls.certManager.enabled`. |
+| tls.certManager.issuerRef.name | string | `""` | Issuer signing the gateway certificate. Required when `tls.certManager.createCA` is false. |
 | tls.secretName | string | `"protonpass-gateway-tls"` | Name of the TLS Secret of the gateway (`tls.crt`, `tls.key`, `ca.crt`). ESO trusts `ca.crt`, and only reads it if it carries the label `external-secrets.io/type=webhook` (set automatically with cert-manager). |

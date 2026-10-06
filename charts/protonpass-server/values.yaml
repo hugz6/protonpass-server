@@ -34,21 +34,26 @@ broker:
 # -- Group shared by both containers. It owns the socket volume, so the gateway can reach the broker.
 fsGroup: 10000
 
-# Existing Secrets, created outside the chart.
+# Secrets used by the pods. Only the personal access token has to be created
+# by hand.
 secrets:
-  # -- Name of an existing Secret holding the Proton Pass personal access token (`pst_<token>::<key>`) under the key `pat`. Mounted in the broker only.
+  # -- Name of an existing Secret, created by hand, holding the Proton Pass personal access token (`pst_<token>::<key>`) under the key `pat`. Mounted in the broker only.
   pat: protonpass-pat
-  # -- Name of an existing Secret holding the bearer token ESO sends to the gateway, under the key `token`. Mounted in the gateway only. ESO only reads it if it carries the label `external-secrets.io/type=webhook`.
+  # -- Name of the Secret holding the bearer token ESO sends to the gateway, under the key `token`. Mounted in the gateway only.
   token: protonpass-gateway-token
+  # -- Generate the token Secret (random, kept across upgrades, labelled for ESO). Set to false to provide your own: it must then carry the label `external-secrets.io/type=webhook`.
+  createToken: true
 
 tls:
   # -- Name of the TLS Secret of the gateway (`tls.crt`, `tls.key`, `ca.crt`). ESO trusts `ca.crt`, and only reads it if it carries the label `external-secrets.io/type=webhook` (set automatically with cert-manager).
   secretName: protonpass-gateway-tls
   certManager:
-    # -- Create the TLS Secret with a cert-manager `Certificate` instead of providing it.
-    enabled: false
+    # -- Create the TLS Secret with cert-manager. Set to false to provide the Secret yourself.
+    enabled: true
+    # -- Create a private CA for the release (self-signed Issuer, CA Certificate, CA Issuer) and sign the gateway certificate with it. Set to false to use `issuerRef` instead.
+    createCA: true
     issuerRef:
-      # -- Issuer signing the certificate. Required when `tls.certManager.enabled`.
+      # -- Issuer signing the gateway certificate. Required when `tls.certManager.createCA` is false.
       name: ""
       # -- `Issuer` or `ClusterIssuer`.
       kind: Issuer

@@ -1,10 +1,54 @@
 {{- if .Values.tls.certManager.enabled }}
+{{- $fullname := include "protonpass-server.fullname" . }}
+{{- if .Values.tls.certManager.createCA }}
+# A private CA owned by the release: a public CA (ACME) cannot sign the
+# internal .svc name of the gateway anyway. The self-signed Issuer only
+# bootstraps the CA, which then signs the gateway certificate, so ca.crt stays
+# the same when the gateway certificate is renewed.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $fullname }}-selfsigned
+  labels:
+    {{- include "protonpass-server.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $fullname }}-ca
+  labels:
+    {{- include "protonpass-server.labels" . | nindent 4 }}
+spec:
+  isCA: true
+  commonName: {{ $fullname }}-ca
+  secretName: {{ $fullname }}-ca
+  duration: 87600h # 10 years
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: {{ $fullname }}-selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $fullname }}-ca
+  labels:
+    {{- include "protonpass-server.labels" . | nindent 4 }}
+spec:
+  ca:
+    secretName: {{ $fullname }}-ca
+---
+{{- end }}
 # cert-manager writes tls.crt, tls.key and ca.crt into tls.secretName and
 # renews them; ESO trusts ca.crt to reach the gateway.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ include "protonpass-server.fullname" . }}
+  name: {{ $fullname }}
   labels:
     {{- include "protonpass-server.labels" . | nindent 4 }}
 spec:
@@ -15,13 +59,18 @@ spec:
       external-secrets.io/type: webhook
   # the names ESO uses in the store URL
   dnsNames:
-    - {{ include "protonpass-server.fullname" . }}.{{ .Release.Namespace }}.svc
-    - {{ include "protonpass-server.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
+    - {{ $fullname }}.{{ .Release.Namespace }}.svc
+    - {{ $fullname }}.{{ .Release.Namespace }}.svc.cluster.local
   privateKey:
     algorithm: ECDSA
     size: 256
     rotationPolicy: Always
   issuerRef:
-    name: {{ required "tls.certManager.issuerRef.name is required when tls.certManager.enabled" .Values.tls.certManager.issuerRef.name }}
+    {{- if .Values.tls.certManager.createCA }}
+    name: {{ $fullname }}-ca
+    kind: Issuer
+    {{- else }}
+    name: {{ required "tls.certManager.issuerRef.name is required when tls.certManager.createCA is false" .Values.tls.certManager.issuerRef.name }}
     kind: {{ .Values.tls.certManager.issuerRef.kind }}
+    {{- end }}
 {{- end }}
