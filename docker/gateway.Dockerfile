@@ -1,5 +1,6 @@
 # build the gateway as a static binary
-FROM golang:1.27.1-bookworm AS build
+# runs on the build machine, go cross-compiles to the target platform
+FROM --platform=$BUILDPLATFORM golang:1.27.1-bookworm AS build
 ARG TARGETOS TARGETARCH
 WORKDIR /src
 COPY go.mod ./

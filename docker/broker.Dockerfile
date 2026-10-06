@@ -1,5 +1,6 @@
 # build the broker as a static binary
-FROM golang:1.27.1-bookworm AS build
+# runs on the build machine, go cross-compiles to the target platform
+FROM --platform=$BUILDPLATFORM golang:1.27.1-bookworm AS build
 ARG TARGETOS TARGETARCH
 WORKDIR /src
 COPY go.mod ./
@@ -10,7 +11,8 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags="-s -w" -o /out/broker ./cmd/broker
 
 # download the official pass-cli and check it: a changed file fails the build
-FROM debian:12-slim AS passcli
+# runs on the build machine too: it only downloads the binary for TARGETARCH
+FROM --platform=$BUILDPLATFORM debian:12-slim AS passcli
 ARG TARGETARCH
 ARG PASS_CLI_VERSION=2.4.1
 ARG PASS_CLI_SHA256_AMD64=f4188430466e0a3d668b56791a8b430162cb20ceb108fed4fdbfcfe77d3080e6
