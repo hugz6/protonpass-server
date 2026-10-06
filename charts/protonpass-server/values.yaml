@@ -3,7 +3,7 @@
 
 gateway:
   image:
-    repository: ghcr.io/hugoz6/protonpass-gateway
+    repository: ghcr.io/hugz6/protonpass-gateway
     # empty: use .Chart.AppVersion
     tag: ""
     pullPolicy: IfNotPresent
@@ -14,7 +14,7 @@ gateway:
 
 broker:
   image:
-    repository: ghcr.io/hugoz6/protonpass-broker
+    repository: ghcr.io/hugz6/protonpass-broker
     tag: ""
     pullPolicy: IfNotPresent
   uid: 10001
