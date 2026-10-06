@@ -1,0 +1,96 @@
+{{ template "chart.header" . }}
+
+{{ template "chart.versionBadge" . }}{{ template "chart.typeBadge" . }}{{ template "chart.appVersionBadge" . }}
+
+{{ template "chart.description" . }}
+
+## How it works
+
+```
+ESO ──HTTPS──▶ gateway ──HTTP over a unix socket──▶ broker ──▶ pass-cli ──▶ Proton
+               token, TLS                          personal access token
+```
+
+Both run in one Pod, in two containers with distinct UIDs:
+
+- the **gateway** is the only network-facing part. It checks ESO's bearer token, validates the
+  requested reference and forwards it. It holds no Proton credential and cannot run pass-cli;
+- the **broker** holds the Proton Pass session. It listens on a unix socket only reachable by the
+  gateway's UID, and only knows how to read an item.
+
+Each Secret is mounted only in the container that uses it, the root filesystems are read-only, and
+a NetworkPolicy only lets ESO in.
+
+## Prerequisites
+
+- [External Secrets Operator](https://external-secrets.io) v1 API (tested with 2.11).
+- A Proton Pass **personal access token**, ideally limited to a dedicated vault with the `viewer`
+  role:
+  ```sh
+  pass-cli personal-access-token create --name k8s --expiration 1y
+  pass-cli personal-access-token access grant --personal-access-token-name k8s \
+    --vault-name k8s --role viewer
+  ```
+- A TLS certificate for the gateway: either [cert-manager](https://cert-manager.io)
+  (`tls.certManager.enabled`), or a `kubernetes.io/tls` Secret with `tls.crt`, `tls.key` and
+  `ca.crt`.
+
+## Installing
+
+Create the Secrets the chart refers to. The labels are required by ESO's webhook provider:
+
+```sh
+kubectl create namespace protonpass
+
+kubectl -n protonpass create secret generic protonpass-pat --from-file=pat=./pat
+kubectl -n protonpass create secret generic protonpass-gateway-token \
+  --from-literal=token="$(head -c 32 /dev/urandom | base64)"
+kubectl -n protonpass label secret protonpass-gateway-token external-secrets.io/type=webhook
+```
+
+Then install the chart, here with cert-manager:
+
+```sh
+helm install protonpass oci://ghcr.io/hugz6/charts/{{ template "chart.name" . }} \
+  --version {{ template "chart.version" . }} -n protonpass \
+  --set tls.certManager.enabled=true --set tls.certManager.issuerRef.name=<issuer>
+```
+
+Without cert-manager, the TLS Secret must also carry the label `external-secrets.io/type=webhook`.
+
+## Reading a secret
+
+`remoteRef.key` is `SHARE_ID/ITEM_ID`, `remoteRef.property` the field name:
+
+```yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: database
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: protonpass
+  target:
+    name: database
+  data:
+    - secretKey: password
+      remoteRef:
+        key: SHARE_ID/ITEM_ID
+        property: password
+```
+
+The IDs come from `pass-cli vault list --output json` and
+`pass-cli item list --share-id SHARE_ID --output json`.
+
+## Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| `secret does not contain needed label 'external-secrets.io/type: webhook'` | the token or TLS Secret lacks the label |
+| `Secret does not exist` | the gateway answered 404: check its logs and the `remoteRef.key` format |
+| Pod `1/2` ready (gateway not ready) | the broker has no valid Proton session: check the broker logs and the personal access token |
+| `Personal access token ... must have exactly 64 characters` | the `pat` Secret does not hold a valid token |
+
+{{ template "chart.valuesSection" . }}

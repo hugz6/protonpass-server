@@ -3,64 +3,76 @@
 
 gateway:
   image:
+    # -- Gateway image repository.
     repository: ghcr.io/hugz6/protonpass-gateway
-    # empty: use .Chart.AppVersion
+    # -- Gateway image tag.
+    # @default -- `.Chart.AppVersion`
     tag: ""
+    # -- Gateway image pull policy.
     pullPolicy: IfNotPresent
-  # the broker only accepts connections from this uid
+  # -- UID of the gateway container. The broker only accepts connections from this UID.
   uid: 10002
-  # must outlast broker.timeout, or the gateway gives up before the answer
+  # -- Timeout of one broker call. Must outlast `broker.timeout`, or the gateway gives up before the answer.
   timeout: 35s
 
 broker:
   image:
+    # -- Broker image repository (contains pass-cli).
     repository: ghcr.io/hugz6/protonpass-broker
+    # -- Broker image tag.
+    # @default -- `.Chart.AppVersion`
     tag: ""
+    # -- Broker image pull policy.
     pullPolicy: IfNotPresent
+  # -- UID of the broker container.
   uid: 10001
-  # per pass-cli call
+  # -- Timeout of one pass-cli call.
   timeout: 30s
-  # pass-cli calls running at the same time
+  # -- Maximum pass-cli calls running at the same time. Extra requests wait, then get a 503.
   maxConcurrent: 4
 
-# group shared by both containers: owns the socket volume
+# -- Group shared by both containers. It owns the socket volume, so the gateway can reach the broker.
 fsGroup: 10000
 
-# existing Secrets, created outside the chart
+# Existing Secrets, created outside the chart.
 secrets:
-  # key "pat": Proton Pass personal access token (pst_<token>::<key>)
+  # -- Name of an existing Secret holding the Proton Pass personal access token (`pst_<token>::<key>`) under the key `pat`. Mounted in the broker only.
   pat: protonpass-pat
-  # key "token": bearer token ESO sends to the gateway. ESO only reads it if
-  # the Secret carries the label external-secrets.io/type=webhook
+  # -- Name of an existing Secret holding the bearer token ESO sends to the gateway, under the key `token`. Mounted in the gateway only. ESO only reads it if it carries the label `external-secrets.io/type=webhook`.
   token: protonpass-gateway-token
 
 tls:
-  # Secret of type kubernetes.io/tls with tls.crt, tls.key and ca.crt; needs the
-  # label external-secrets.io/type=webhook (set automatically with cert-manager)
+  # -- Name of the TLS Secret of the gateway (`tls.crt`, `tls.key`, `ca.crt`). ESO trusts `ca.crt`, and only reads it if it carries the label `external-secrets.io/type=webhook` (set automatically with cert-manager).
   secretName: protonpass-gateway-tls
   certManager:
-    # create the certificate with cert-manager instead of providing the Secret
+    # -- Create the TLS Secret with a cert-manager `Certificate` instead of providing it.
     enabled: false
     issuerRef:
+      # -- Issuer signing the certificate. Required when `tls.certManager.enabled`.
       name: ""
+      # -- `Issuer` or `ClusterIssuer`.
       kind: Issuer
 
 eso:
-  # namespace allowed to reach the gateway (NetworkPolicy)
+  # -- Namespace of External Secrets Operator: the only one allowed to reach the gateway (NetworkPolicy).
   namespace: external-secrets
   clusterSecretStore:
+    # -- Create a `ClusterSecretStore` pointing at the gateway.
     create: true
+    # -- Name of the `ClusterSecretStore`.
     name: protonpass
-    # the broker answers {"value": "..."} when a field (remoteRef.property) is set
+    # -- Where ESO reads the value. The broker answers `{"value": "..."}` when a field (`remoteRef.property`) is set.
     jsonPath: $.value
 
 resources:
+  # -- Resources of the gateway container.
   gateway:
     requests:
       cpu: 10m
       memory: 32Mi
     limits:
       memory: 64Mi
+  # -- Resources of the broker container (pass-cli runs here).
   broker:
     requests:
       cpu: 50m

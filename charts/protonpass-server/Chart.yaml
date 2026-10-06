@@ -8,3 +8,10 @@ version: 0.1.0
 
 # application version: default tag of both images
 appVersion: "0.1.0"
+home: https://github.com/hugz6/protonpass-server
+sources:
+  - https://github.com/hugz6/protonpass-server
+keywords:
+  - proton-pass
+  - external-secrets
+  - secrets
