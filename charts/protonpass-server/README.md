@@ -4,22 +4,7 @@
 
 Read Proton Pass secrets from External Secrets Operator, through a gateway and a pass-cli broker isolated in one Pod.
 
-## How it works
-
-```
-ESO ──HTTPS──▶ gateway ──HTTP over a unix socket──▶ broker ──▶ pass-cli ──▶ Proton
-               token, TLS                          personal access token
-```
-
-Both run in one Pod, in two containers with distinct UIDs:
-
-- the **gateway** is the only network-facing part. It checks ESO's bearer token, validates the
-  requested reference and forwards it. It holds no Proton credential and cannot run pass-cli;
-- the **broker** holds the Proton Pass session. It listens on a unix socket only reachable by the
-  gateway's UID, and only knows how to read an item.
-
-Each Secret is mounted only in the container that uses it, the root filesystems are read-only, and
-a NetworkPolicy only lets ESO in.
+See the [repository README](https://github.com/hugz6/protonpass-server) for how it works.
 
 ## Prerequisites
 
