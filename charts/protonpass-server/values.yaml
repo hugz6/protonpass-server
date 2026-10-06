@@ -51,8 +51,8 @@ eso:
   clusterSecretStore:
     create: true
     name: protonpass
-    # where the value is in pass-cli JSON output: to be determined
-    jsonPath: ""
+    # the broker answers {"value": "..."} when a field (remoteRef.property) is set
+    jsonPath: $.value
 
 resources:
   gateway:
