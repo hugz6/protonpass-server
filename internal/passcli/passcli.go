@@ -144,11 +144,24 @@ func (r *Runner) View(ctx context.Context, uri string) (json.RawMessage, error) 
 		return nil, err
 	}
 
-	// only item view prints JSON: login does not
+	// with a field, pass-cli ignores --output json and prints the raw value
+	// followed by a newline: wrap it so callers always get JSON. Decide on the
+	// uri, not on json.Valid: a password like 123 or true is valid JSON too
+	if hasField(uri) {
+		value := strings.TrimSuffix(string(out), "\n")
+		return json.Marshal(map[string]string{"value": value})
+	}
+
+	// without a field, the whole item comes as JSON
 	if !json.Valid(out) {
 		return nil, fmt.Errorf("error while validating pass-cli json output")
 	}
 	return out, nil
+}
+
+// hasField reports whether a valid uri is pass://SHARE/ITEM/FIELD.
+func hasField(uri string) bool {
+	return strings.Count(strings.TrimPrefix(uri, "pass://"), "/") == 2
 }
 
 func (r *Runner) Login(ctx context.Context, pat string) error {

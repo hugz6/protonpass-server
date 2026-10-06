@@ -445,3 +445,55 @@ func TestInfoNoSession(t *testing.T) {
 		t.Errorf("Info error = %q, want pass-cli stderr in it", err)
 	}
 }
+
+func TestViewFieldWrapsRawValue(t *testing.T) {
+	// with a field, the real pass-cli prints the raw value and a newline,
+	// even with --output json
+	tests := []struct {
+		name   string
+		output string
+		want   string
+	}{
+		{"password", `tatata\n`, "tatata"},
+		{"no trailing newline", `tatata`, "tatata"},
+		{"multi-line note keeps inner newlines", `line1\nline2\n`, "line1\nline2"},
+		{"only the last newline is removed", `value\n\n`, "value\n"},
+		{"looks like a number", `123\n`, "123"},
+		{"looks like json", `{"a":1}\n`, `{"a":1}`},
+		{"quotes and backslashes", `a"b\\c\n`, `a"b\c`},
+		{"empty field", `\n`, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newRunner(t, `printf '`+tt.output+`'`)
+
+			out, err := r.View(t.Context(), "pass://share/item/password")
+			if err != nil {
+				t.Fatalf("View: %v", err)
+			}
+			var got struct{ Value *string }
+			if err := json.Unmarshal(out, &got); err != nil {
+				t.Fatalf("View output %q is not a JSON object: %v", out, err)
+			}
+			if got.Value == nil {
+				t.Fatalf("View output %q has no value key", out)
+			}
+			if *got.Value != tt.want {
+				t.Errorf("value = %q, want %q", *got.Value, tt.want)
+			}
+		})
+	}
+}
+
+func TestViewWholeItemIsReturnedAsIs(t *testing.T) {
+	want := `{"item":{"id":"abc"}}`
+	r := newRunner(t, `printf '`+want+`'`)
+
+	got, err := r.View(t.Context(), "pass://share/item")
+	if err != nil {
+		t.Fatalf("View: %v", err)
+	}
+	if string(got) != want {
+		t.Errorf("View = %q, want %q", got, want)
+	}
+}
