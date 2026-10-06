@@ -16,9 +16,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/hugoz6/protonpass-server/internal/gateway"
-	"github.com/hugoz6/protonpass-server/internal/graceful"
-	"github.com/hugoz6/protonpass-server/internal/httplog"
+	"github.com/hugz6/protonpass-server/internal/gateway"
+	"github.com/hugz6/protonpass-server/internal/graceful"
+	"github.com/hugz6/protonpass-server/internal/httplog"
 )
 
 // shutdownTimeout stays under the 30s Kubernetes gives before SIGKILL.

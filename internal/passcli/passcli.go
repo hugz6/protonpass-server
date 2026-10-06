@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hugoz6/protonpass-server/internal/protocol"
+	"github.com/hugz6/protonpass-server/internal/protocol"
 )
 
 // DefaultMaxOutput for any pass-cli secret's is 1Mio

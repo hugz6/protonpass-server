@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/hugoz6/protonpass-server/internal/protocol"
+	"github.com/hugz6/protonpass-server/internal/protocol"
 )
 
 // Errors a Broker returns so the handler can pick the HTTP status.

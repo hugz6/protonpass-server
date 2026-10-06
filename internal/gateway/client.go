@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/hugoz6/protonpass-server/internal/protocol"
+	"github.com/hugz6/protonpass-server/internal/protocol"
 )
 
 // maxResponseBody matches the 1 MiB limit of a Kubernetes Secret: the broker

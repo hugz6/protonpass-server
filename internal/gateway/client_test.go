@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hugoz6/protonpass-server/internal/protocol"
+	"github.com/hugz6/protonpass-server/internal/protocol"
 )
 
 // fakeBrokerSocket serves h on a unix socket until the end of the test and

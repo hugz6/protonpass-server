@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hugoz6/protonpass-server/internal/protocol"
+	"github.com/hugz6/protonpass-server/internal/protocol"
 )
 
 // fakeViewer returns out and err, and records how it was called

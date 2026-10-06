@@ -1,3 +1,3 @@
-module github.com/hugoz6/protonpass-server
+module github.com/hugz6/protonpass-server
 
 go 1.27.1
