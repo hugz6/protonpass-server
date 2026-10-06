@@ -21,6 +21,7 @@
             kubernetes-helm # chart
             kubectl         # deploy and inspect
             kind            # local cluster
+            helm-docs       # chart README from values.yaml
           ] ++ map withGo127 (with pkgs; [ delve gotools go-tools gomodifytags impl gotests ]);
         };
       });
