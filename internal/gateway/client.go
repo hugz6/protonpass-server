@@ -103,8 +103,7 @@ func (c *Client) Ready(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("error while calling broker: %w", err)
 	}
-	// drain the small body so the connection can be reused
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<10))
+	// Close the body
 	resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
