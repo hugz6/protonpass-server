@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// probeTimeout bounds a readiness check: kubelet probes give up after 1s by
-// default, there is no point waiting longer.
+// probeTimeout bounds a readiness check, under the 3s timeoutSeconds of the
+// chart's readinessProbe: the gateway answers 503 itself before kubelet gives up.
 const probeTimeout = 2 * time.Second
 
 // NewReadyHandler serves the kubelet probe, 200 only while ready succeeds, 503 otherwise (readiness).

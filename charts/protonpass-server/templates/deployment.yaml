@@ -94,6 +94,7 @@ spec:
               port: https
               scheme: HTTPS
           readinessProbe:
+            timeoutSeconds: 3   # longer than probeTimeout (2s): the gateway answers first
             httpGet:
               path: /readyz
               port: https
