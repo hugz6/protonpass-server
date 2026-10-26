@@ -1,0 +1,28 @@
+# Local run of compose.yaml, see "Running locally" in the README.
+version: "3"
+
+tasks:
+  check:
+    desc: Run every check before a commit (dev shell tools)
+    cmds:
+      # gofmt -l lists unformatted files but always exits 0
+      - test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - go vet ./...
+      - staticcheck ./...
+      - go test -race ./...
+      - helm lint --quiet charts/protonpass-server
+      - docker compose config --quiet
+
+  up:
+    desc: Build the images and start the broker and the gateway
+    preconditions:
+      - sh: test -s .run/pat
+        msg: "missing .run/pat: write the personal access token in it"
+    cmds:
+      - docker compose up --build --detach
+
+  down:
+    desc: Stop the containers and delete their volumes
+    cmds:
+      # the secrets volumes hold copies of the PAT and the TLS key: up recreates them
+      - docker compose down --volumes

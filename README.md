@@ -130,11 +130,11 @@ kubectl annotate externalsecret database force-sync=$(date +%s) --overwrite
 
 ## Development
 
-The development environment is a Nix flake (Go, `pass-cli`, Helm, kubectl, kind, helm-docs):
+The development environment is a Nix flake (Go, `pass-cli`, Helm, kubectl, kind, helm-docs, Task):
 
 ```sh
 direnv allow        # or: nix develop
-go test -race ./...
+task check          # gofmt, vet, staticcheck, tests, helm lint, compose config
 go build -o bin/ ./cmd/...
 docker build -f docker/gateway.Dockerfile -t protonpass-gateway:dev .
 docker build -f docker/broker.Dockerfile  -t protonpass-broker:dev .
@@ -148,9 +148,9 @@ Docker and a personal access token:
 
 ```sh
 mkdir -p .run && (umask 077 && printf '%s' 'pst_<token>::<key>' > .run/pat)
-docker compose up --build --detach
+task up      # or: docker compose up --build --detach
 docker compose logs -f
-docker compose down --volumes   # stops everything and deletes the volumes
+task down    # stops everything and deletes the volumes
 ```
 
 The first run creates a certificate for `localhost` and the bearer token in `.run/`:
