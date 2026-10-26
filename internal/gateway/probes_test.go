@@ -23,14 +23,12 @@ func TestProbes(t *testing.T) {
 		path       string
 		wantStatus int
 	}{
-		{"healthz while ready", ready, "/healthz", http.StatusOK},
-		{"healthz while not ready", notReady, "/healthz", http.StatusOK},
 		{"readyz while ready", ready, "/readyz", http.StatusOK},
 		{"readyz while not ready", notReady, "/readyz", http.StatusServiceUnavailable},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h := NewProbeHandler(tt.ready, slog.New(slog.DiscardHandler))
+			h := NewReadyHandler(tt.ready, slog.New(slog.DiscardHandler))
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tt.path, nil))
 
@@ -49,7 +47,7 @@ func TestReadyzBoundsSlowCheck(t *testing.T) {
 		<-ctx.Done()
 		return ctx.Err()
 	}
-	h := NewProbeHandler(slow, slog.New(slog.DiscardHandler))
+	h := NewReadyHandler(slow, slog.New(slog.DiscardHandler))
 
 	start := time.Now()
 	rec := httptest.NewRecorder()

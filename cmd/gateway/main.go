@@ -61,10 +61,11 @@ func run(logger *slog.Logger) error {
 
 	// secrets need the token, kubelet probes do not
 	mux := http.NewServeMux()
-	mux.Handle("/v1/secrets/", gateway.NewHandler(client, trimmedToken, logger))
-	probes := gateway.NewProbeHandler(client.Ready, logger)
-	mux.Handle("/healthz", probes)
-	mux.Handle("/readyz", probes)
+	mux.Handle("GET /v1/secrets/", gateway.NewHandler(client, trimmedToken, logger))
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("ok"))
+	})
+	mux.Handle("GET /readyz", gateway.NewReadyHandler(client.Ready, logger))
 
 	srv := &http.Server{
 		Addr:    *listen,

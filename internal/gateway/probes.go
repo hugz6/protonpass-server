@@ -11,15 +11,9 @@ import (
 // default, there is no point waiting longer.
 const probeTimeout = 2 * time.Second
 
-// NewProbeHandler serves the kubelet probes, without authentication:
-//   - GET /healthz: 200 while the process serves HTTP (liveness);
-//   - GET /readyz: 200 only while ready succeeds, 503 otherwise (readiness).
-func NewProbeHandler(ready func(context.Context) error, log *slog.Logger) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Write([]byte("ok"))
-	})
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+// NewReadyHandler serves the kubelet probe, 200 only while ready succeeds, 503 otherwise (readiness).
+func NewReadyHandler(ready func(context.Context) error, log *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), probeTimeout)
 		defer cancel()
 
@@ -31,5 +25,4 @@ func NewProbeHandler(ready func(context.Context) error, log *slog.Logger) http.H
 		}
 		w.Write([]byte("ok"))
 	})
-	return mux
 }
