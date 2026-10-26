@@ -51,6 +51,38 @@ func TestReadyNotReady(t *testing.T) {
 	}
 }
 
+func TestReadyCachesResultWhenProbeGivesUp(t *testing.T) {
+	srv := httptest.NewServer(NewReadyHandler(func(ctx context.Context) error {
+		select {
+		case <-time.After(300 * time.Millisecond):
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}, 10*time.Second, slog.New(slog.DiscardHandler)))
+	defer srv.Close()
+
+	// Setup the request
+	cli := &http.Client{Timeout: 100 * time.Millisecond}
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/v1/ready", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = cli.Do(req)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("err = %v, want %s", err, context.DeadlineExceeded)
+	}
+	cli.Timeout = 400 * time.Millisecond
+	rsp, err := cli.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rsp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want %d", rsp.StatusCode, http.StatusOK)
+	}
+}
+
 func TestReadyCachesResult(t *testing.T) {
 	tests := []struct {
 		name string

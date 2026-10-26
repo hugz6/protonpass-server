@@ -38,10 +38,14 @@ func (rd *readiness) result(ctx context.Context) error {
 	rd.mu.Lock()
 	defer rd.mu.Unlock()
 
+	// if result is in cache and within ttl, return last cached result
 	if !rd.checkedAt.IsZero() && time.Since(rd.checkedAt) < rd.ttl {
 		return rd.err
 	}
-	rd.err = rd.check(ctx)
+
+	// WithoutCancel so the readyness check can be put in cache even if the
+	// kubelet timeout expires and cancel the http request
+	rd.err = rd.check(context.WithoutCancel(ctx))
 	rd.checkedAt = time.Now()
 	if rd.err != nil {
 		rd.log.Warn("not ready", "err", rd.err)
