@@ -1,0 +1,83 @@
+# Local run without Kubernetes, laid out like the Pod: the same images, one
+# UID per container sharing a group, the socket on a shared in-memory volume,
+# each secret mounted only where it is used. Put the personal access token in
+# .run/pat, then: docker compose up --build
+
+services:
+  # one-shot: creates the gateway certificate and token in .run/ (kept across
+  # runs, used by curl), then copies each secret into the volume of the only
+  # container that reads it, owned by that container's UID
+  setup:
+    # has openssl, and the Dockerfiles already pull it
+    image: golang:1.27.1-bookworm
+    volumes:
+      - ./.run:/host
+      - gateway-secrets:/gateway
+      - broker-secrets:/broker
+    command:
+      - sh
+      - -euc
+      - |
+        test -s /host/pat || { echo "missing .run/pat: write the personal access token in it" >&2; exit 1; }
+        cd /host
+        if [ ! -s cert.pem ]; then
+          # self-signed, so curl can trust it directly with --cacert
+          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
+            -keyout key.pem -out cert.pem -days 365 \
+            -subj /CN=localhost -addext subjectAltName=DNS:localhost
+          head -c 32 /dev/urandom | base64 > token
+          chmod 0600 token
+          # files in .run/ belong to whoever owns .run/, not to root
+          chown "$$(stat -c %u:%g /host)" cert.pem key.pem token
+        fi
+        cp cert.pem key.pem token /gateway/
+        chown -R 10002:10000 /gateway && chmod 0440 /gateway/*
+        cp pat /broker/
+        chown -R 10001:10000 /broker && chmod 0440 /broker/*
+
+  broker:
+    build: { context: ., dockerfile: docker/broker.Dockerfile }
+    user: "10001:10000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command:
+      - -socket=/run/protonpass/sock/broker.sock
+      - -allowed-uid=10002
+      - -home=/home/pass
+      - -pat-file=/secrets/pat
+    volumes:
+      - sock:/run/protonpass
+      - pass-home:/home/pass
+      - broker-secrets:/secrets:ro
+    depends_on:
+      setup: { condition: service_completed_successfully }
+
+  gateway:
+    build: { context: ., dockerfile: docker/gateway.Dockerfile }
+    user: "10002:10000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command:
+      - -token-file=/secrets/token
+      - -tls-cert=/secrets/cert.pem
+      - -tls-key=/secrets/key.pem
+      - -broker-socket=/run/protonpass/sock/broker.sock
+    # this machine only
+    ports: ["127.0.0.1:8443:8443"]
+    volumes:
+      - sock:/run/protonpass
+      - gateway-secrets:/secrets:ro
+    depends_on:
+      setup: { condition: service_completed_successfully }
+
+volumes:
+  # in memory like the Pod's emptyDirs; compose has no fsGroup, so the
+  # ownership is set here
+  sock:
+    driver_opts: { type: tmpfs, device: tmpfs, o: "uid=10001,gid=10000,mode=0750" }
+  pass-home:
+    driver_opts: { type: tmpfs, device: tmpfs, o: "uid=10001,gid=10000,mode=0700" }
+  gateway-secrets:
+  broker-secrets:

@@ -5,3 +5,5 @@
 bin
 docs
 charts
+# local secrets of compose.yaml: never sent to the build
+.run

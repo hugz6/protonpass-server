@@ -140,6 +140,26 @@ docker build -f docker/gateway.Dockerfile -t protonpass-gateway:dev .
 docker build -f docker/broker.Dockerfile  -t protonpass-broker:dev .
 ```
 
+### Running locally
+
+`compose.yaml` runs both images without Kubernetes, laid out like the Pod: one UID per container,
+the socket on a shared in-memory volume, each secret mounted only where it is used. It only needs
+Docker and a personal access token:
+
+```sh
+mkdir -p .run && (umask 077 && printf '%s' 'pst_<token>::<key>' > .run/pat)
+docker compose up --build --detach
+docker compose logs -f
+docker compose down --volumes   # stops everything and deletes the volumes
+```
+
+The first run creates a certificate for `localhost` and the bearer token in `.run/`:
+
+```sh
+curl --cacert .run/cert.pem -H "Authorization: Bearer $(cat .run/token)" \
+  "https://localhost:8443/v1/secrets/<SHARE_ID>/<ITEM_ID>?field=password"
+```
+
 Pushing a `vX.Y.Z` tag runs the tests, then publishes both images (amd64 and arm64) and the chart
 to `ghcr.io/hugz6`.
 
