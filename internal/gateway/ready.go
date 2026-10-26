@@ -7,14 +7,14 @@ import (
 	"time"
 )
 
-// probeTimeout bounds a readiness check, under the 3s timeoutSeconds of the
+// readyTimeout bounds a readiness check, under the 3s timeoutSeconds of the
 // chart's readinessProbe: the gateway answers 503 itself before kubelet gives up.
-const probeTimeout = 2 * time.Second
+const readyTimeout = 2 * time.Second
 
 // NewReadyHandler serves the kubelet probe, 200 only while ready succeeds, 503 otherwise (readiness).
 func NewReadyHandler(ready func(context.Context) error, log *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), probeTimeout)
+		ctx, cancel := context.WithTimeout(r.Context(), readyTimeout)
 		defer cancel()
 
 		// a gateway whose broker is down must not receive traffic

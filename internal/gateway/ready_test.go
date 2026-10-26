@@ -56,8 +56,8 @@ func TestReadyzBoundsSlowCheck(t *testing.T) {
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
 	}
-	if elapsed := time.Since(start); elapsed > probeTimeout+time.Second {
-		t.Errorf("readyz answered after %v, want about %v", elapsed, probeTimeout)
+	if elapsed := time.Since(start); elapsed > readyTimeout+time.Second {
+		t.Errorf("readyz answered after %v, want about %v", elapsed, readyTimeout)
 	}
 }
 
