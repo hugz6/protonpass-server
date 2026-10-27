@@ -39,7 +39,7 @@ var baseEnv = []string{
 type Runner struct {
 	Bin       string        // absolute path to pass-cli
 	Home      string        // home path
-	Timeout   time.Duration // timeout for pass-cli exec
+	Timeout   time.Duration // bounds a whole call, lock wait included
 	MaxOutput int64         // maximum pass-cli output
 
 	ctxMutex *utils.CtxMutex
