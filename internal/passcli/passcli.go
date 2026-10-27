@@ -1,3 +1,4 @@
+// Package passcli defines the objects to interact with the passcli binary.
 package passcli
 
 import (
