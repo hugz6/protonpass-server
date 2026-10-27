@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -109,5 +110,50 @@ func TestReadyCachesResult(t *testing.T) {
 				t.Errorf("check ran %d times after the ttl, want 2", got)
 			}
 		})
+	}
+}
+
+func TestReadySeveralProbesSlowCheck(t *testing.T) {
+	var calls atomic.Int32
+	started := make(chan struct{})
+	release := make(chan struct{})
+
+	check := func(context.Context) error {
+		calls.Add(1)
+		close(started)
+		<-release
+		return nil
+	}
+
+	h := NewReadyHandler(check, 30*time.Second, slog.New(slog.DiscardHandler))
+
+	var wg sync.WaitGroup
+
+	wg.Go(func() {
+		p := probe(t, h)
+		if p.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", p.Code, http.StatusOK)
+		}
+	})
+
+	<-started
+	for range 5 {
+		wg.Go(func() {
+			p := probe(t, h)
+			if p.Code != http.StatusOK {
+				t.Errorf("status = %d, want %d", p.Code, http.StatusOK)
+			}
+		})
+	}
+
+	// let the 5 other probes encouter the mutex
+	time.Sleep(50 * time.Millisecond)
+
+	close(release)
+
+	wg.Wait()
+
+	if got := calls.Load(); got != 1 {
+		t.Errorf("check ran %d times for concurrent probes, want 1", got)
 	}
 }
