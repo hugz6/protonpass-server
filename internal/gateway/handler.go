@@ -18,7 +18,6 @@ import (
 var (
 	ErrInvalid = errors.New("broker rejected the request") // → 400
 	ErrTimeout = errors.New("broker timed out")            // → 504
-	ErrBusy    = errors.New("broker busy")                 // → 503
 )
 
 // Broker reads a Proton Pass item through the broker.
@@ -89,10 +88,6 @@ func NewHandler(b Broker, token string, log *slog.Logger) http.Handler {
 			}
 			if errors.Is(err, ErrTimeout) {
 				http.Error(w, "broker timeout", http.StatusGatewayTimeout)
-				return
-			}
-			if errors.Is(err, ErrBusy) {
-				http.Error(w, "broker busy", http.StatusServiceUnavailable)
 				return
 			}
 			http.Error(w, "broker failed", http.StatusBadGateway)
