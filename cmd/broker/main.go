@@ -94,6 +94,7 @@ func run(logger *slog.Logger) error {
 	// readiness reads a cached session check
 	mux.Handle("GET "+protocol.ReadyPath, broker.NewReadyHandler(passCliRunner.Info, 10*time.Second, logger))
 
+	// TODO: remove the magical value
 	srv := &http.Server{
 		Handler:           httplog.Middleware(logger, mux),
 		ReadHeaderTimeout: 5 * time.Second,
