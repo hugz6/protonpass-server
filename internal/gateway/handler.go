@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -39,8 +40,11 @@ func authorized(header, token string) bool {
 		return false
 	}
 
+	hToken := sha256.Sum256([]byte(token))
+	hSentToken := sha256.Sum256([]byte(sentToken))
+
 	// constant time compare, == would leak the token through response time
-	return subtle.ConstantTimeCompare([]byte(sentToken), []byte(token)) == 1
+	return subtle.ConstantTimeCompare(hToken[:], hSentToken[:]) == 1
 }
 
 // NewHandler serves GET /v1/secrets/SHARE/ITEM?field=FIELD for ESO,
