@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -29,11 +31,8 @@ func fakeCLI(t *testing.T, script string) string {
 // dedicated HOME and a timeout generous enough for slow CI machines.
 func newRunner(t *testing.T, script string) *Runner {
 	t.Helper()
-	return &Runner{
-		Bin:     fakeCLI(t, script),
-		Home:    t.TempDir(),
-		Timeout: 5 * time.Second,
-	}
+	r := NewRunner(fakeCLI(t, script), t.TempDir(), 5*time.Second)
+	return r
 }
 
 // lookPath returns the absolute path of an external command. The runner
@@ -57,6 +56,55 @@ func TestFakeCLI(t *testing.T) {
 	}
 }
 
+func TestRunSerialized(t *testing.T) {
+	r := newRunner(t, lookPath(t, "sleep")+` 0.25`)
+	s := time.Now()
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		if _, err := r.run(t.Context(), nil); err != nil {
+			t.Errorf("run: %v", err)
+		}
+	})
+	wg.Go(func() {
+		if _, err := r.run(t.Context(), nil); err != nil {
+			t.Errorf("run: %v", err)
+		}
+	})
+	wg.Wait()
+	elapsed := time.Since(s)
+
+	if elapsed < 500*time.Millisecond {
+		t.Errorf("elapsed time is %s, want >= 500ms", elapsed)
+	}
+}
+
+func TestRunSerializedTimeout(t *testing.T) {
+	r := newRunner(t, lookPath(t, "sleep")+` 0.25`)
+	var countDL atomic.Int32
+	var wg sync.WaitGroup
+
+	f := func() {
+		ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+		defer cancel()
+		_, err := r.run(ctx, nil)
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				countDL.Add(1)
+			} else {
+				t.Errorf("run: %v", err)
+			}
+		}
+	}
+
+	wg.Go(f)
+	wg.Go(f)
+	wg.Wait()
+	exceededDeadline := countDL.Load()
+	if exceededDeadline != 1 {
+		t.Errorf("exceededDeadline = %d, want 1", exceededDeadline)
+	}
+}
+
 func TestViewOK(t *testing.T) {
 	want := `{"ok":true}`
 	r := newRunner(t, `printf '`+want+`'`)
@@ -67,6 +115,17 @@ func TestViewOK(t *testing.T) {
 	}
 	if string(got) != want {
 		t.Errorf("View = %q, want %q", got, want)
+	}
+}
+
+func TestViewDefaultOutputLimit(t *testing.T) {
+	head := lookPath(t, "head")
+	size := strconv.FormatInt(DefaultMaxOutput+1, 10)
+	r := newRunner(t, head+" -c "+size+" /dev/zero")
+
+	_, err := r.View(t.Context(), "pass://share/item")
+	if !errors.Is(err, errOutputTooLarge) {
+		t.Errorf("View error = %v, want errOutputTooLarge", err)
 	}
 }
 
@@ -223,18 +282,6 @@ func TestViewOutputLimit(t *testing.T) {
 	// Exceeding the limit must stop pass-cli, not wait for the timeout.
 	if elapsed > time.Second {
 		t.Errorf("View returned after %v, want < 1s", elapsed)
-	}
-}
-
-func TestViewDefaultOutputLimit(t *testing.T) {
-	head := lookPath(t, "head")
-	size := strconv.FormatInt(int64(DefaultMaxOutput)+1, 10)
-	r := newRunner(t, head+" -c "+size+" /dev/zero")
-	r.MaxOutput = 0
-
-	_, err := r.View(t.Context(), "pass://share/item")
-	if !errors.Is(err, errOutputTooLarge) {
-		t.Errorf("View error = %v, want errOutputTooLarge", err)
 	}
 }
 

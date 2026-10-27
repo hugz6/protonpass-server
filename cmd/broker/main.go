@@ -78,11 +78,8 @@ func run(logger *slog.Logger) error {
 		return errors.New("pat file must not be empty")
 	}
 
-	passCliRunner := &passcli.Runner{
-		Bin:     absBinPath,
-		Home:    *homePath,
-		Timeout: *timeout,
-	}
+	passCliRunner := passcli.NewRunner(absBinPath, *homePath, *timeout)
+
 	// a restarted container finds the previous session in HOME: reuse it
 	reused, err := passCliRunner.EnsureSession(context.Background(), trimmedPat)
 	if err != nil {

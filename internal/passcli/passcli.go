@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hugz6/protonpass-server/internal/protocol"
+	"github.com/hugz6/protonpass-server/internal/utils"
 )
 
 // DefaultMaxOutput for any pass-cli secret's is 1Mio
@@ -33,12 +34,26 @@ var baseEnv = []string{
 	"PROTON_PASS_NO_UPDATE_CHECK=1",
 }
 
-// Runner struct
+// Runner runs pass-cli, one call at a time. Create it with NewRunner.
 type Runner struct {
 	Bin       string        // absolute path to pass-cli
 	Home      string        // home path
 	Timeout   time.Duration // timeout for pass-cli exec
 	MaxOutput int64         // maximum pass-cli output
+
+	ctxMutex *utils.CtxMutex
+}
+
+// NewRunner initialize a new runner.
+func NewRunner(bin string, home string, timeout time.Duration) *Runner {
+	cmu := utils.NewCtxMutex()
+	return &Runner{
+		Bin:       bin,
+		Home:      home,
+		Timeout:   timeout,
+		MaxOutput: DefaultMaxOutput,
+		ctxMutex:  cmu,
+	}
 }
 
 type stdoutBuffer struct {
@@ -84,15 +99,16 @@ func redact(s string, secretEnv []string) string {
 
 // run launch pass-cli with args, extraEnv is added to base env
 func (r *Runner) run(ctx context.Context, extraEnv []string, args ...string) ([]byte, error) {
-	// handle maxOutput
-	maxOutput := r.MaxOutput
-	if maxOutput == 0 {
-		maxOutput = DefaultMaxOutput
-	}
-
 	// create a context with a timeout
 	viewCtx, cancel := context.WithTimeout(ctx, r.Timeout)
 	defer cancel()
+
+	// try to acquire lock
+	b := r.ctxMutex.Lock(viewCtx)
+	if !b {
+		return nil, fmt.Errorf("couldn't acquire lock for pass-cli: %w", viewCtx.Err())
+	}
+	defer r.ctxMutex.Unlock()
 
 	// setup pass-cli exec with ctx and shell-less
 	cmd := exec.CommandContext(viewCtx, r.Bin, args...)
@@ -102,7 +118,7 @@ func (r *Runner) run(ctx context.Context, extraEnv []string, args ...string) ([]
 	cmd.WaitDelay = time.Millisecond * 500
 
 	// create the stdout reader
-	buff := &stdoutBuffer{maxOutput: maxOutput}
+	buff := &stdoutBuffer{maxOutput: r.MaxOutput}
 	cmd.Stdout = buff
 
 	// create the stderr buffer
