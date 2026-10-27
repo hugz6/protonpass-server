@@ -72,6 +72,8 @@ func TestHandlerErrors(t *testing.T) {
 		{"timeout", http.MethodGet, "pass://share/item", fmt.Errorf("pass-cli: %w", context.DeadlineExceeded), http.StatusGatewayTimeout, true},
 		{"failure", http.MethodGet, "pass://share/item", errors.New("exit status 1: s3cret"), http.StatusBadGateway, true},
 		{"wrong method", http.MethodPost, "pass://share/item", nil, http.StatusMethodNotAllowed, false},
+		// nothing is written: the gateway already hung up, 200 is the default for http.ResponseRecorder
+		{"cancelled", http.MethodGet, "pass://share/item", fmt.Errorf("pass-cli: %w", context.Canceled), http.StatusOK, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

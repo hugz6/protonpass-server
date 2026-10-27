@@ -31,14 +31,20 @@ func NewHandler(v Viewer, log *slog.Logger) http.Handler {
 
 		out, err := v.View(r.Context(), uri)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				log.Info("request cancelled by the caller", "uri", uri)
+				return
+			}
+
 			log.Error("view failed", "uri", uri, "err", err)
+
 			if errors.Is(err, context.DeadlineExceeded) {
 				http.Error(w, "deadline exceeded", http.StatusGatewayTimeout)
 				return
-			} else {
-				http.Error(w, "internal error", http.StatusBadGateway)
-				return
 			}
+
+			http.Error(w, "internal error", http.StatusBadGateway)
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(out)
