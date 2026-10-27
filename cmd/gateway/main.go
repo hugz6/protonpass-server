@@ -67,6 +67,7 @@ func run(logger *slog.Logger) error {
 	})
 	mux.Handle("GET /readyz", gateway.NewReadyHandler(client.Ready, logger))
 
+	// TODO: remove the magical value
 	srv := &http.Server{
 		Addr:    *listen,
 		Handler: httplog.Middleware(logger, mux),
