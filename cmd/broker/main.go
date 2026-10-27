@@ -42,16 +42,12 @@ func run(logger *slog.Logger) error {
 	homePath := flag.String("home", "", "home")
 	patPath := flag.String("pat-file", "", "path of the file containing the pat for pass-cli")
 	timeout := flag.Duration("timeout", 30*time.Second, "timeout per pass-cli call")
-	maxConcurrent := flag.Int("max-concurrent", 4, "maximum pass-cli calls running at the same time")
 	flag.Parse()
 
 	logger.Info("broker starting")
 
 	if *allowedUID <= 0 {
 		return errors.New("-allowed-uid must be > 0 (non root)")
-	}
-	if *maxConcurrent <= 0 {
-		return errors.New("-max-concurrent must be > 0")
 	}
 	if *homePath == "" || *patPath == "" {
 		return errors.New("-home and -pat-file must be specified")
@@ -92,9 +88,10 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("listening: %w", err)
 	}
 
-	// items go through the concurrency limit, readiness reads a cached session check
 	mux := http.NewServeMux()
-	mux.Handle(protocol.ItemsPath, broker.NewHandler(broker.Limit(passCliRunner, *maxConcurrent), logger))
+	mux.Handle(protocol.ItemsPath, broker.NewHandler(passCliRunner, logger))
+
+	// readiness reads a cached session check
 	mux.Handle("GET "+protocol.ReadyPath, broker.NewReadyHandler(passCliRunner.Info, 10*time.Second, logger))
 
 	srv := &http.Server{

@@ -82,7 +82,6 @@ The IDs come from `pass-cli vault list --output json` and
 | broker.image.pullPolicy | string | `"IfNotPresent"` | Broker image pull policy. |
 | broker.image.repository | string | `"ghcr.io/hugz6/protonpass-broker"` | Broker image repository (contains pass-cli). |
 | broker.image.tag | string | `.Chart.AppVersion` | Broker image tag. |
-| broker.maxConcurrent | int | `4` | Maximum pass-cli calls running at the same time. Extra requests wait, then get a 503. |
 | broker.timeout | string | `"30s"` | Timeout of one pass-cli call. |
 | broker.uid | int | `10001` | UID of the broker container. |
 | eso.clusterSecretStore.create | bool | `true` | Create a `ClusterSecretStore` pointing at the gateway. |

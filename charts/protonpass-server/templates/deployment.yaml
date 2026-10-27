@@ -38,7 +38,6 @@ spec:
             - -home=/home/pass
             - -pat-file=/secrets/pat/pat
             - -timeout={{ .Values.broker.timeout }}
-            - -max-concurrent={{ .Values.broker.maxConcurrent }}
           securityContext:
             runAsUser: {{ .Values.broker.uid }}
             # files it creates (socket) belong to the shared group

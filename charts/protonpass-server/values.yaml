@@ -28,8 +28,6 @@ broker:
   uid: 10001
   # -- Timeout of one pass-cli call.
   timeout: 30s
-  # -- Maximum pass-cli calls running at the same time. Extra requests wait, then get a 503.
-  maxConcurrent: 4
 
 # -- Group shared by both containers. It owns the socket volume, so the gateway can reach the broker.
 fsGroup: 10000
