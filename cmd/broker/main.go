@@ -91,8 +91,19 @@ func run(logger *slog.Logger) error {
 	mux := http.NewServeMux()
 	mux.Handle(protocol.ItemsPath, broker.NewHandler(passCliRunner, logger))
 
-	// readiness reads a cached session check
-	mux.Handle("GET "+protocol.ReadyPath, broker.NewReadyHandler(passCliRunner.Info, 10*time.Second, logger))
+	check := func(ctx context.Context) error {
+		reused, err := passCliRunner.EnsureSession(ctx, trimmedPat)
+		if err != nil {
+			return err
+		}
+		if !reused {
+			logger.Info("pass-cli session renewed")
+		}
+		return nil
+	}
+
+	// readiness checks the session, cached for ttl, and logs in again once it expired
+	mux.Handle("GET "+protocol.ReadyPath, broker.NewReadyHandler(check, 10*time.Second, logger))
 
 	// TODO: remove the magical value
 	srv := &http.Server{
